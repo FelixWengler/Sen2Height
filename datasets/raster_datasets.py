@@ -73,25 +73,23 @@ class SentinelDSMCombo(GeoDataset):
 
         return sample
 
+
     # GeoDataset interface
     @property
     def index(self):
         return self._index
 
+
     @index.setter
     def index(self, value):
         self._index = value
+
 
     @property
     def bounds(self):
         return self._index.bounds
 
+
     @property
     def res(self):
         return self.sentinel_dataset.res
-# Example usage:
-# sentinel = SentinelImage(root='/path/to/sentinel')
-# dsm = DSMImage(root='/path/to/dsm')
-# dataset = SentinelDSMCombo(sentinel, dsm)
-# sample = dataset[dataset.index[0]]
-# print(sample["image"].shape)  # Should be [Sentinel bands + 1, H, W]
