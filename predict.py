@@ -41,7 +41,7 @@ def save_prediction(output_array, profile, out_path):
 
 if __name__ == "__main__":
     image_path = os.path.join(config.SENTINEL_DIR)  # Input image to predict
-    model_path = "models/output/model_341_16052025.pth"  # Pretrained model weights
+    model_path = "models/output/model_16052025.pth"  # Pretrained model weights
     output_path = config.PREDICTION_OUTPUT
 
     image_np, profile = load_image(image_path)

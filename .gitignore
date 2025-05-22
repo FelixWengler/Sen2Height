@@ -1,2 +1,9 @@
 data/dsm/ 
 data/sentinel/
+!data/
+
+models/output/
+!models/
+
+utils/figures/
+!utils/

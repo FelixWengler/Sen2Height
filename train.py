@@ -1,7 +1,9 @@
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import torch
+import numpy as np
 import albumentations as A
+from albumentations.pytorch import ToTensorV2
 from torch.utils.data import DataLoader, IterableDataset, random_split
 from torchgeo.datasets import stack_samples
 from torchgeo.samplers import RandomGeoSampler
@@ -22,15 +24,42 @@ val_len = 1000 - train_len
 train_sampler = RandomGeoSampler(full_dataset, size=config.PATCH_SIZE, length=train_len)
 val_sampler = RandomGeoSampler(full_dataset, size=config.PATCH_SIZE, length=val_len)
 
-# Wrap in iterable dataset
-class GeoPatchDataset(IterableDataset):
-    def __init__(self, dataset, sampler):
+class GeoPatchDataset(torch.utils.data.IterableDataset):
+    def __init__(self, dataset, sampler, augment=False):
         self.dataset = dataset
         self.sampler = sampler
+        self.augment = augment
+
+        if self.augment:
+            self.transform = A.Compose([
+                A.HorizontalFlip(p=0.3),
+                A.VerticalFlip(p=0.3),
+                A.RandomRotate90(p=0.3),
+                A.RandomBrightnessContrast(p=0.2),  # S2 only
+                A.GaussianBlur(p=0.1),
+                A.Normalize(),                      # S2 normalization (redundant if already [0,1], can be removed)
+            ])
 
     def __iter__(self):
         for query in self.sampler:
-            yield self.dataset[query]
+            sample = self.dataset[query]
+
+            image = sample["image"]  # torch.Tensor [C, H, W]
+            label = sample["label"]  # torch.Tensor [1, H, W]
+
+            if self.augment:
+                # Albumentations expects numpy HWC, float32
+                image_np = image.numpy().transpose(1, 2, 0).astype(np.float32)
+                label_np = label.numpy().squeeze(0).astype(np.float32)
+
+                augmented = self.transform(image=image_np, mask=label_np)
+
+                # Convert back to torch
+                sample["image"] = torch.from_numpy(augmented["image"].transpose(2, 0, 1))
+                sample["label"] = torch.from_numpy(augmented["mask"]).unsqueeze(0)
+
+            yield sample
+
 
 train_dataset = GeoPatchDataset(full_dataset, sampler=train_sampler)
 val_dataset = GeoPatchDataset(full_dataset, sampler=val_sampler)

@@ -1,0 +1,5 @@
+APU Statistics
+MAE   : 256.03 cm
+RMSE  : 418.70 cm
+R²    : 0.8727
+Bias  : -1.54 cm

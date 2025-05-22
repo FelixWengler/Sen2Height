@@ -11,5 +11,5 @@ NUM_BANDS = 4  # Number of input bands from Sentinel-2
 DEVICE = "cpu"  # or "cpu"
 
 # Prediction settings
-PREDICTION_OUTPUT = "predictions/output.tif"
+PREDICTION_OUTPUT = "predictions/output16052025.tif"
 PREDICTION_PATCH_SIZE = 32
