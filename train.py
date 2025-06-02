@@ -32,13 +32,11 @@ class GeoPatchDataset(torch.utils.data.IterableDataset):
 
         if self.augment:
             self.transform = A.Compose([
-                A.HorizontalFlip(p=0.3),
-                A.VerticalFlip(p=0.3),
-                A.RandomRotate90(p=0.3),
-                A.RandomBrightnessContrast(p=0.2),  # S2 only
-                A.GaussianBlur(p=0.1),
-                A.Normalize(),                      # S2 normalization (redundant if already [0,1], can be removed)
-            ])
+                A.HorizontalFlip(p=0.5),
+                A.VerticalFlip(p=0.5),
+                A.RandomRotate90(p=0.5),
+            ], additional_targets={'mask': 'mask'})
+
 
     def __iter__(self):
         for query in self.sampler:
@@ -125,5 +123,5 @@ for epoch in range(config.EPOCHS):
     # Save best model
     if avg_val_rmse < best_val_rmse:
         best_val_rmse = avg_val_rmse
-        torch.save(model.state_dict(), "models/output/model_16052025.pth")
+        torch.save(model.state_dict(), "models/output/model_29052025.pth")
         print("✅ Saved new best model")

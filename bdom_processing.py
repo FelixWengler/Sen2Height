@@ -4,7 +4,7 @@ import os
 from glob import glob
 
 input_folder = "D:/MSc. Arbeit/BDoms/laz"
-output_folder = "D:/MSc. Arbeit/BDoms/tifs"
+output_folder = "D:/MSc. Arbeit/BDoms/tifs/unprocessed"
 
 laz_files = glob(os.path.join(input_folder, "*.laz"))
 

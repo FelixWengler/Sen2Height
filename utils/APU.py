@@ -18,7 +18,7 @@ sentinel_path = os.path.join(project_root, config.SENTINEL_DIR)
 dsm_path = os.path.join(project_root, config.DSM_DIR)
 
 # Construct correct absolute model path
-model_path = os.path.join(project_root, "models", "output", "model_16052025.pth")
+model_path = os.path.join(project_root, "models", "output", "model_265_28052025_full.pth")
 assert os.path.exists(model_path), f"❌ Model file not found: {model_path}"
 
 # Load model
@@ -89,25 +89,40 @@ rmse_val = np.sqrt(mean_squared_error(actuals_np, preds_np))
 r2 = r2_score(actuals_np, preds_np)
 bias = np.mean(preds_np - actuals_np)
 
-with open("figures/apu_16052025.txt", "w") as f:
+with open("figures/apu_28052025.txt", "w") as f:
     f.write("APU Statistics\n")
     f.write(f"MAE   : {mae:.2f} cm\n")
     f.write(f"RMSE  : {rmse_val:.2f} cm\n")
     f.write(f"R²    : {r2:.4f}\n")
     f.write(f"Bias  : {bias:.2f} cm\n")
-print("✅ Stats saved to figures/apu_16052025.txt")
+print("✅ Stats saved to figures/apu_28052025.txt")
 
+# 2D density heatmap instead of plain scatter
 plt.figure(figsize=(6, 6))
-plt.scatter(actuals, predictions, s=1, alpha=0.3, label="pixels")
-plt.plot([actuals.min(), actuals.max()], [actuals.min(), actuals.max()], 'r--', label="perfect prediction")
+plt.hexbin(actuals_np, preds_np, gridsize=150, cmap='viridis', bins='log')
+plt.plot([actuals_np.min(), actuals_np.max()], [actuals_np.min(), actuals_np.max()], 'r--', label="perfect prediction")
 
 plt.xlabel("Actual Height (cm)")
 plt.ylabel("Predicted Height (cm)")
-plt.title("Actual vs. Predicted Heights (APU Plot)")
-plt.legend()
+plt.title("Pixel Density Heatmap: Actual vs. Predicted Height")
+cb = plt.colorbar()
+cb.set_label('log10(pixel count)')
+
 plt.grid(True)
 plt.tight_layout()
 plt.xlim(0, 8000)
 plt.ylim(0, 8000)
-plt.savefig("figures/apu_plot16052025.png", dpi=300)
+plt.savefig("figures/apu_28052025.png", dpi=300)
+plt.show()
+
+# visualize prediction vs reference
+plt.figure(figsize=(8, 4))
+plt.hist(actuals_np, bins=100, alpha=0.5, label="Actual", color='blue', density=True)
+plt.hist(preds_np, bins=100, alpha=0.5, label="Predicted", color='orange', density=True)
+plt.xlabel("Height (cm)")
+plt.ylabel("Normalized Density")
+plt.title("Distribution of Actual vs Predicted Heights")
+plt.legend()
+plt.tight_layout()
+plt.savefig("figures/apu_hist28052025.png", dpi=300)
 plt.show()

@@ -56,9 +56,9 @@ class Sentinel2UNet(nn.Module):
         self.enc3a = UNetBlock(128, 256, kernel_size=3)
 
         # Large-kernel encoder (7x7)
-        self.enc1b = UNetBlock(in_channels, 64, kernel_size=5)
-        self.enc2b = UNetBlock(64, 128, kernel_size=5)
-        self.enc3b = UNetBlock(128, 256, kernel_size=5)
+        self.enc1b = UNetBlock(in_channels, 64, kernel_size=7)
+        self.enc2b = UNetBlock(64, 128, kernel_size=7)
+        self.enc3b = UNetBlock(128, 256, kernel_size=7)
 
         # Bottleneck
         self.bottleneck = UNetBlock(256, 512)
