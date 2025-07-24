@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import matplotlib.pyplot as plt
-from models.height_net import Sentinel2UNet
+from models.height_net import Sentinel2ResUNet
 import config
 from torch.utils.data import DataLoader, IterableDataset
 from torchgeo.samplers import RandomGeoSampler
@@ -18,11 +18,11 @@ sentinel_path = os.path.join(project_root, config.SENTINEL_DIR)
 dsm_path = os.path.join(project_root, config.DSM_DIR)
 
 # Construct correct absolute model path
-model_path = os.path.join(project_root, "models", "output", "model_265_28052025_full.pth")
+model_path = os.path.join(project_root, "models", "output", "model_small_19072025_230.pth")
 assert os.path.exists(model_path), f"❌ Model file not found: {model_path}"
 
 # Load model
-model = Sentinel2UNet(in_channels=config.NUM_BANDS)
+model = Sentinel2ResUNet(in_channels=config.NUM_BANDS)
 model.load_state_dict(torch.load(model_path))
 model.eval()
 
@@ -89,21 +89,21 @@ rmse_val = np.sqrt(mean_squared_error(actuals_np, preds_np))
 r2 = r2_score(actuals_np, preds_np)
 bias = np.mean(preds_np - actuals_np)
 
-with open("figures/apu_28052025.txt", "w") as f:
+with open("figures/apu_230.txt", "w") as f:
     f.write("APU Statistics\n")
     f.write(f"MAE   : {mae:.2f} cm\n")
     f.write(f"RMSE  : {rmse_val:.2f} cm\n")
     f.write(f"R²    : {r2:.4f}\n")
     f.write(f"Bias  : {bias:.2f} cm\n")
-print("✅ Stats saved to figures/apu_28052025.txt")
+print("✅ Stats saved to figures/apu_230.txt")
 
 # 2D density heatmap instead of plain scatter
 plt.figure(figsize=(6, 6))
-plt.hexbin(actuals_np, preds_np, gridsize=150, cmap='viridis', bins='log')
+plt.hexbin(preds_np, actuals_np, gridsize=150, cmap='viridis', bins='log')
 plt.plot([actuals_np.min(), actuals_np.max()], [actuals_np.min(), actuals_np.max()], 'r--', label="perfect prediction")
 
-plt.xlabel("Actual Height (cm)")
-plt.ylabel("Predicted Height (cm)")
+plt.xlabel("Predicted Height (cm)")
+plt.ylabel("Actual Height (cm)")
 plt.title("Pixel Density Heatmap: Actual vs. Predicted Height")
 cb = plt.colorbar()
 cb.set_label('log10(pixel count)')
@@ -112,7 +112,7 @@ plt.grid(True)
 plt.tight_layout()
 plt.xlim(0, 8000)
 plt.ylim(0, 8000)
-plt.savefig("figures/apu_28052025.png", dpi=300)
+plt.savefig("figures/apu_230.png", dpi=300)
 plt.show()
 
 # visualize prediction vs reference
@@ -124,5 +124,5 @@ plt.ylabel("Normalized Density")
 plt.title("Distribution of Actual vs Predicted Heights")
 plt.legend()
 plt.tight_layout()
-plt.savefig("figures/apu_hist28052025.png", dpi=300)
+plt.savefig("figures/apu_hist230.png", dpi=300)
 plt.show()

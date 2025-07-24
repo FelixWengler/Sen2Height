@@ -1,7 +1,7 @@
 import torch
 import rasterio
 from rasterio.windows import Window
-from models.height_net import Sentinel2UNet
+from models.height_net import Sentinel2ResUNet
 from tqdm import tqdm
 import config
 import numpy as np
@@ -9,12 +9,14 @@ import os
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+#Prediction Image Loader#
 def load_image(path):
     with rasterio.open(path) as src:
         data = src.read()  # shape: (bands, height, width)
         profile = src.profile
     return data, profile
 
+#Predictor
 def sliding_window_prediction(model, image_tensor, window_size, stride):
     _, height, width = image_tensor.shape
     output_sum = torch.zeros((1, height, width), dtype=torch.float32)
@@ -34,11 +36,13 @@ def sliding_window_prediction(model, image_tensor, window_size, stride):
     output_avg = output_sum / output_count
     return output_avg.squeeze(0).numpy()
 
+#Write Predcition Image#
 def save_prediction(output_array, profile, out_path):
     profile.update(dtype=rasterio.float32, count=1)
     with rasterio.open(out_path, 'w', **profile) as dst:
         dst.write(output_array.astype(rasterio.float32), 1)
 
+#Execute#
 if __name__ == "__main__":
     image_path = os.path.join(config.PREDICTION_INPUT) # Input image to predict
     model_path = "models/output/model_297_29052025_full.pth"  # Pretrained model weights
@@ -48,7 +52,7 @@ if __name__ == "__main__":
     image_tensor = torch.tensor(image_np, dtype=torch.float32)
     image_tensor = torch.clamp((image_tensor - 1000) / 10000.0, 0, 1)
 
-    model = Sentinel2UNet(in_channels=config.NUM_BANDS)
+    model = Sentinel2ResUNet(in_channels=config.NUM_BANDS)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device)
 

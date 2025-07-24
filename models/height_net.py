@@ -2,17 +2,27 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class UNetBlock(nn.Module):
+class ResidualUNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3):
         super().__init__()
         padding = kernel_size // 2
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding)
+        self.bn1 = nn.BatchNorm2d(out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, padding=padding)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+
+        # For residual connection if channel dims change
+        if in_channels != out_channels:
+            self.residual_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        else:
+            self.residual_conv = nn.Identity()
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        return x
+        identity = self.residual_conv(x)
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += identity  # Residual connection
+        return F.relu(out)
 
 class AttentionGate(nn.Module):
     def __init__(self, F_g, F_l, F_int):
@@ -31,37 +41,30 @@ class AttentionGate(nn.Module):
             nn.Sigmoid()
         )
         self.relu = nn.ReLU(inplace=True)
-
-        # Safe default: keep attention soft at start
-        self.psi[0].bias.data.fill_(0.1)
+        self.psi[0].bias.data.fill_(0.1)  # Soft start
 
     def forward(self, g, x):
         g1 = self.W_g(g)
         x1 = self.W_x(x)
         psi = self.relu(g1 + x1)
         psi = self.psi(psi)
+        return x * psi + x  # Residual skip
 
-        # Optional: residual skip to prevent catastrophic suppression
-        return x * psi + x
-
-
-class Sentinel2UNet(nn.Module):
+class Sentinel2ResUNet(nn.Module):
     def __init__(self, in_channels=4):
         super().__init__()
         self.pool = nn.MaxPool2d(2)
 
-        # Standard encoder (3x3)
-        self.enc1a = UNetBlock(in_channels, 64, kernel_size=3)
-        self.enc2a = UNetBlock(64, 128, kernel_size=3)
-        self.enc3a = UNetBlock(128, 256, kernel_size=3)
-
-        # Large-kernel encoder (7x7)
-        self.enc1b = UNetBlock(in_channels, 64, kernel_size=7)
-        self.enc2b = UNetBlock(64, 128, kernel_size=7)
-        self.enc3b = UNetBlock(128, 256, kernel_size=7)
+        # Multiscale encoders
+        self.enc1a = ResidualUNetBlock(in_channels, 64, kernel_size=3)
+        self.enc1b = ResidualUNetBlock(in_channels, 64, kernel_size=7)
+        self.enc2a = ResidualUNetBlock(64, 128, kernel_size=3)
+        self.enc2b = ResidualUNetBlock(64, 128, kernel_size=7)
+        self.enc3a = ResidualUNetBlock(128, 256, kernel_size=3)
+        self.enc3b = ResidualUNetBlock(128, 256, kernel_size=7)
 
         # Bottleneck
-        self.bottleneck = UNetBlock(256, 512)
+        self.bottleneck = ResidualUNetBlock(256, 512)
 
         # Attention gates
         self.att3 = AttentionGate(F_g=256, F_l=256, F_int=128)
@@ -70,19 +73,19 @@ class Sentinel2UNet(nn.Module):
 
         # Decoder
         self.up3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
-        self.dec3 = UNetBlock(512, 256)
+        self.dec3 = ResidualUNetBlock(512, 256)
 
         self.up2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
-        self.dec2 = UNetBlock(256, 128)
+        self.dec2 = ResidualUNetBlock(256, 128)
 
         self.up1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
-        self.dec1 = UNetBlock(128, 64)
+        self.dec1 = ResidualUNetBlock(128, 64)
 
-        # Output layer
+        # Output
         self.final = nn.Conv2d(64, 1, kernel_size=1)
 
     def forward(self, x):
-        # Parallel encoders
+        # Multiscale encoders
         e1a = self.enc1a(x)
         e1b = self.enc1b(x)
         e1 = e1a + e1b

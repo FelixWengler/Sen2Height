@@ -7,10 +7,11 @@ from albumentations.pytorch import ToTensorV2
 from torch.utils.data import DataLoader, IterableDataset, random_split
 from torchgeo.datasets import stack_samples
 from torchgeo.samplers import RandomGeoSampler
-from models.height_net import Sentinel2UNet
+from models.height_net import Sentinel2ResUNet
 from datasets.raster_datasets import SentinelImage, DSMImage, SentinelDSMCombo
 from utils.metrics import rmse
 import config
+
 
 # Initialize base dataset
 sentinel_ds = SentinelImage(config.SENTINEL_DIR)
@@ -24,6 +25,7 @@ val_len = 1000 - train_len
 train_sampler = RandomGeoSampler(full_dataset, size=config.PATCH_SIZE, length=train_len)
 val_sampler = RandomGeoSampler(full_dataset, size=config.PATCH_SIZE, length=val_len)
 
+#Generate Random patches and data Augmentation#
 class GeoPatchDataset(torch.utils.data.IterableDataset):
     def __init__(self, dataset, sampler, augment=False):
         self.dataset = dataset
@@ -45,6 +47,7 @@ class GeoPatchDataset(torch.utils.data.IterableDataset):
             image = sample["image"]  # torch.Tensor [C, H, W]
             label = sample["label"]  # torch.Tensor [1, H, W]
 
+            #Data Augmentation#
             if self.augment:
                 # Albumentations expects numpy HWC, float32
                 image_np = image.numpy().transpose(1, 2, 0).astype(np.float32)
@@ -67,12 +70,13 @@ val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, num_workers=0
 
 # Model setup
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = Sentinel2UNet(in_channels=config.NUM_BANDS).to(device)
+model = Sentinel2ResUNet(in_channels=config.NUM_BANDS).to(device)
 criterion = torch.nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
 
 best_val_rmse = float("inf")
 
+#Training Loop
 for epoch in range(config.EPOCHS):
     model.train()
     total_train_loss = 0.0
@@ -123,5 +127,5 @@ for epoch in range(config.EPOCHS):
     # Save best model
     if avg_val_rmse < best_val_rmse:
         best_val_rmse = avg_val_rmse
-        torch.save(model.state_dict(), "models/output/model_29052025.pth")
+        torch.save(model.state_dict(), "models/output/model_10062025.pth")
         print("✅ Saved new best model")
