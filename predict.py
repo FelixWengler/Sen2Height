@@ -10,6 +10,8 @@ import config
 
 ##helpers##
 
+
+###smoothing function###
 def make_hann2d(size: int, eps: float = 1e-6) -> torch.Tensor:
     """2-D Hann window normalized to max=1 (avoid zero weights at exact border)."""
     w1d = torch.hann_window(size, periodic=False)  # [0..size-1]
