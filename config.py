@@ -2,18 +2,23 @@
 
 #--Training Settings--#
 
-SENTINEL_DIR = "data/sentinel/train/10m_layerstack_clip2.tif"
-DSM_DIR = "data/dsm/train_dsm/bdom_fin2.tif"
-PATCH_SIZE = 128
+SENTINEL_DIR = "data/sentinel/20230708_SEN2A_clip_25832.tif"
+DSM_DIR = "data/dsm/dgm10_repaired.tif"
+PATCH_SIZE = 64
 BATCH_SIZE = 8
-EPOCHS = 100
+EPOCHS = 10
 LEARNING_RATE = 1e-3
-NUM_BANDS = 4  # Number of input bands from Sentinel-2
+NUM_BANDS = 10  # Number of input bands from Sentinel-2
 
-DEVICE = "cpu"  # or "cpu"
+
+DEVICE = "cpu"  # or "cuda"
 
 #--Prediction settings--#
 
-PREDICTION_INPUT = "data/sentinel/class/10m_layerstack_comp.tif"
-PREDICTION_OUTPUT = "predictions/full_s2/output_30052025.tif"
-PREDICTION_PATCH_SIZE = 64
+PREDICTION_INPUT = "/data/ahsoka/dc/deu/ard/X0056_Y0050/20240625_LEVEL2_SEN2A_BOA.tif"
+PREDICTION_OUTPUT = "/data/ahsoka/student/s1feweng/Sen2Height_main/predictions/force_predict/X0056_Y0050_smooth/20240625_SEN2A_HEIGHT.tif"
+PREDICTION_PATCH_SIZE = 32
+PREDICTION_MODEL = "models/output/model_230708_56_50_2m_final.pth"
+PREDICTION_WORKERS = 20  # Number of CPU cores to use
+PREDICTION_BATCH_SIZE = 8  # Number of patches predicted at once
+

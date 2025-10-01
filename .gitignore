@@ -1,4 +1,4 @@
-data/dsm/ 
+data
 data/sentinel/
 
 
@@ -7,3 +7,5 @@ models/output/
 utils/figures/
 
 predictions
+
+test.py
