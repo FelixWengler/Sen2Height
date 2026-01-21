@@ -88,11 +88,11 @@ if __name__ == "__main__":
     model.eval()
 
     window_size = config.PREDICTION_PATCH_SIZE
-    stride = window_size // 4  # overlap
+    stride = window_size // 2  # overlap
 
     dataset = SlidingWindowDataset(image_tensor, window_size, stride)
     loader = DataLoader(dataset, batch_size=config.PREDICTION_BATCH_SIZE,
-                        num_workers=config.PREDICTION_WORKERS, pin_memory=False)
+                        num_workers=4, pin_memory=False)
 
     _, height, width = image_tensor.shape
     output_sum = torch.zeros((1, height, width), dtype=torch.float32)

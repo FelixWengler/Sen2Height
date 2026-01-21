@@ -2,15 +2,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 #U-net block with residual connections
 class ResidualUNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3):
         super().__init__()
         padding = kernel_size // 2
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding)
-        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.bn1 = nn.GroupNorm(8, out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size, padding=padding)
-        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.bn2 = nn.GroupNorm(8, out_channels)
 
         #Residual connection if channel dims change
         if in_channels != out_channels:

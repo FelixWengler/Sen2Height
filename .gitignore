@@ -5,5 +5,9 @@ data/sentinel/
 models/output/
 
 utils/figures/
+utils/APU.py
+utils/delete.py
+utils/Densityplot.py
+utils/Weight_calc.py
 
 predictions
