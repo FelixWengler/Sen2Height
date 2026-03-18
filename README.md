@@ -1,6 +1,6 @@
 # Sen2Height
 A Residual U-net model for height predictions using digital surface 
-models (DSMs) and Sentinel-2 imagery using PyTorch and TorchGeo.
+models (DSMs), Sentinel1 and Sentinel2 data.
 
 
 ## Repository Structure
