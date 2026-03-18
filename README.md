@@ -1,5 +1,5 @@
 # Sen2Height
-This repo contains code for training and applying a Residual U-net model for height predictions using digital surface 
+A Residual U-net model for height predictions using digital surface 
 models (DSMs) and Sentinel-2 imagery using PyTorch and TorchGeo.
 
 
