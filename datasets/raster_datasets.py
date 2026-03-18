@@ -1,127 +1,107 @@
+from pathlib import Path
 import torch
-from torchgeo.datasets.utils import BoundingBox
-from torchgeo.datasets import RasterDataset, GeoDataset, IntersectionDataset
+from torch.utils.data import Dataset
 import rasterio
 import numpy as np
 
+class S2S1DSMTileFolderDataset(Dataset):
+    """
+    Dataset that reads tiled Sentinel-2 + Sentinel-1 + DSM chips from folders.
 
-# S2 data wrapper
-class SentinelImage(RasterDataset):
-    filename_glob = '*.tif'  # adjust based on Sentinel naming (e.g., 'T32*.tif')
-    is_image = True
+    Expected structure:
+      root/
+        S2_0608/
+          x0085_y0059_2018.tif        (C=10, H=256, W=256)
+        S1_0608/
+          x0085_y0059_2018.tif        (C=2,  H=128, W=128)  [VH,VV]
+        BDOM/
+          x0085_y0059_2018.tif        (C=1,  H=256, W=256)
+    """
 
-    def __getitem__(self, query):
-        sample = super().__getitem__(query)
+    def __init__(
+        self,
+        root_dir,
+        s2_subdir="S2_0608",
+        s1_subdir="S1",
+        dsm_subdir="BDOM",
+        s2_divisor=10000.0,
+        s2_clamp01=True,
+        s1_nodata=-32768.0,
+        s1_use_log1p=True,
+        transforms=None,
+    ):
+        self.root = Path(root_dir)
+        self.s2_dir = self.root / s2_subdir
+        self.s1_dir = self.root / s1_subdir
+        self.dsm_dir = self.root / dsm_subdir
 
-        # Normalize Sentinel reflectance to 0–1
-        image = sample["image"]  # [C, H, W]
-        image = torch.clamp(image / 10000.0, 0, 1)  # remove offset of 1000 if working with regular sentinel data
-        sample["image"] = image
+        if not self.s2_dir.exists():
+            raise FileNotFoundError(f"Missing S2 directory: {self.s2_dir}")
+        if not self.s1_dir.exists():
+            raise FileNotFoundError(f"Missing S1 directory: {self.s1_dir}")
+        if not self.dsm_dir.exists():
+            raise FileNotFoundError(f"Missing DSM directory: {self.dsm_dir}")
 
-        return sample
-
-#class DSMImage(RasterDataset):
-    #filename_glob = '*.tif'
-    #is_image = True
-
-# DSM data wrapper
-class DSMImage(RasterDataset):
-    filename_glob = '*.tif'
-    is_image = True
-
-    def __init__(self, root):
-        super().__init__(root)
-        import rasterio
-        with rasterio.open(self.files[0]) as src:
-            self.full_dsm = src.read(1)
-            self.transform = src.transform
-            self.height = src.height
-            self.width = src.width
-
-    # Extract DSM patch corresponding to boundingbox
-    def __getitem__(self, query: BoundingBox):
-
-        col_start, row_start = ~self.transform * (query.minx, query.maxy)
-        col_end, row_end = ~self.transform * (query.maxx, query.miny)
-
-        row_start = max(0, min(self.height, int(np.floor(row_start))))
-        row_end = max(0, min(self.height, int(np.ceil(row_end))))
-        col_start = max(0, min(self.width, int(np.floor(col_start))))
-        col_end = max(0, min(self.width, int(np.ceil(col_end))))
-
-        # Avoid empty patch
-        if row_end <= row_start or col_end <= col_start:
-            patch = np.zeros((64, 64), dtype=np.float32)
-        else:
-            patch = self.full_dsm[row_start:row_end, col_start:col_end]
-
-        patch_tensor = torch.from_numpy(patch).unsqueeze(0)
-        return {"image": patch_tensor}
-
-
-# Dataset pairs S2 with DSM data
-class SentinelDSMCombo(GeoDataset):
-    def __init__(self, sentinel_dataset, dsm_dataset, transforms=None):
-        super().__init__()
-        self.sentinel_dataset = sentinel_dataset
-        self.dsm_dataset = dsm_dataset
+        self.s2_divisor = float(s2_divisor)
+        self.s2_clamp01 = bool(s2_clamp01)
+        self.s1_nodata = float(s1_nodata)
+        self.s1_use_log1p = bool(s1_use_log1p)
         self.transforms = transforms
 
-        # Create intersection
-        self.intersection = IntersectionDataset(sentinel_dataset, dsm_dataset)
-        self._index = self.intersection.index
+        # build list of triplets: require S2, S1, DSM all exist with same name
+        self.files = sorted([
+            f for f in self.s2_dir.glob("*.tif")
+            if (self.s1_dir / f.name).exists() and (self.dsm_dir / f.name).exists()
+        ])
+
+        if len(self.files) == 0:
+            raise RuntimeError(f"No paired S2/S1/BDOM tiles found in {root_dir}")
 
     def __len__(self):
-        return len(self.intersection)
+        return len(self.files)
 
-    def __getitem__(self, query):
-        if not isinstance(query, BoundingBox):
-            import traceback
-            traceback.print_stack()
+    @staticmethod
+    def _read(path: Path) -> np.ndarray:
+        with rasterio.open(path) as src:
+            arr = src.read()  # (C,H,W) or (1,H,W)
+        return arr.astype(np.float32)
 
-        # Add temporal info if not present (some samplers only return 4D)
-        if query.mint is None or query.maxt is None:
-            query = BoundingBox(
-                minx=query.minx,
-                maxx=query.maxx,
-                miny=query.miny,
-                maxy=query.maxy,
-                mint=0,
-                maxt=1,
-            )
+    def __getitem__(self, idx):
+        s2_path = self.files[idx]
+        s1_path = self.s1_dir / s2_path.name
+        dsm_path = self.dsm_dir / s2_path.name
 
-        # Load S2 and DSM data for the given bounding box and build sample
-        sample_sentinel = self.sentinel_dataset[query]
-        sample_dsm = self.dsm_dataset[query]
+        # ---- S2 (10m) ----
+        s2 = torch.from_numpy(self._read(s2_path)).float()   # (C,256,256)
+        s2 = s2 / self.s2_divisor
+        if self.s2_clamp01:
+            s2 = torch.clamp(s2, 0.0, 1.0)
 
-        image = sample_sentinel["image"]
-        label = sample_dsm["image"]
+        # ---- S1 (20m) ----
+        s1 = torch.from_numpy(self._read(s1_path)).float()   # (2,128,128) [VH,VV]
+        # nodata handling
+        if self.s1_nodata is not None:
+            s1 = torch.where(s1 == self.s1_nodata, torch.zeros_like(s1), s1)
 
-        sample = {
-            "image": image,
-            "label": label,
-            "bounds": query,
-            "crs": sample_sentinel.get("crs", None),
-        }
+        # range compression (recommended for linear-scale SAR)
+        if self.s1_use_log1p:
+            s1 = torch.log1p(torch.clamp(s1, min=0.0))
+
+        # Optional: add log-ratio channel (often helps)
+        # VH=band0, VV=band1 after your convention
+        vh = s1[0:1]
+        vv = s1[1:2]
+        ratio = vh - vv  # in log space: log(VH/VV)
+        s1 = torch.cat([s1, ratio], dim=0)  # now (3,128,128)
+
+        # ---- DSM (10m) ----
+        dsm = torch.from_numpy(self._read(dsm_path)).float()
+        if dsm.ndim == 2:
+            dsm = dsm[None, ...]  # (1,H,W)
+
+        sample = {"s2": s2, "s1": s1, "label": dsm}
 
         if self.transforms:
             sample = self.transforms(sample)
 
         return sample
-
-    # GeoDataset interface
-    @property
-    def index(self):
-        return self._index
-
-    @index.setter
-    def index(self, value):
-        self._index = value
-
-    @property
-    def bounds(self):
-        return self._index.bounds
-
-    @property
-    def res(self):
-        return self.sentinel_dataset.res

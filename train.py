@@ -1,5 +1,4 @@
 import os
-
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import logging
@@ -8,11 +7,18 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
-from models.height_net import Sentinel2ResUNet
-from datasets.raster_datasets import S2DSMTileFolderDataset
-from utils.metrics import rmse
+from model.height_net import Sentinel2ResUNet
+from datasets.raster_datasets import S2S1DSMTileFolderDataset
+#from utils.metrics import rmse
 from utils.WeightedL1 import BinWeightedL1
 import config
+
+def sse_and_count(pred: torch.Tensor, target: torch.Tensor):
+    # pred/target: [B,1,H,W]
+    diff = pred - target
+    sse = torch.sum(diff * diff).item()
+    n = diff.numel()
+    return sse, n
 
 # -------------------------
 # Logging setup
@@ -27,6 +33,7 @@ logging.basicConfig(
 )
 logging.info("Starting Sen2Height tiled training run")
 
+
 # -------------------------
 # Device + threads
 # -------------------------
@@ -34,20 +41,25 @@ torch.set_num_threads(getattr(config, "NUM_THREADS", 30))
 device = torch.device(getattr(config, "DEVICE", "cuda"))  # "cuda" if available
 logging.info(f"Using device: {device}")
 
+
 # -------------------------
 # Datasets
 # -------------------------
 # Expected folder structure:
 # TRAIN_ROOT/
+#   S1/*.tif
 #   S2/*.tif
 #   BDOM/*.tif
 # VAL_ROOT/
+#   S1/*.tif
 #   S2/*.tif
 #   BDOM/*.tif
-train_ds = S2DSMTileFolderDataset(config.TRAIN_ROOT)
-val_ds = S2DSMTileFolderDataset(config.VAL_ROOT)
+train_ds = S2S1DSMTileFolderDataset(config.TRAIN_ROOT)
+val_ds   = S2S1DSMTileFolderDataset(config.VAL_ROOT)
+
 
 logging.info(f"Train tiles: {len(train_ds)} | Val tiles: {len(val_ds)}")
+
 
 # -------------------------
 # DataLoaders
@@ -71,24 +83,28 @@ val_loader = DataLoader(
     pin_memory=(device.type == "cuda"),
 )
 
+
 # -------------------------
 # Model / loss / optimizer
 # -------------------------
-model = Sentinel2ResUNet(in_channels=config.NUM_BANDS).to(device)
-criterion = BinWeightedL1()
+model = model = Sentinel2ResUNet(in_channels=config.NUM_BANDS, s1_in_channels=config.S1_BANDS).to(device)
+criterion = BinWeightedL1().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
+use_amp = (device.type=="cuda")
+scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+accum_steps = 4
+
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer,
-    mode="min",
-    factor=0.5,
-    patience=5,
-    threshold=1e-4,
-    min_lr=1e-6,
-    verbose=True,
+    mode = "min",
+    factor = 0.5,
+    patience = 5,
+    threshold = 1e-4,
+    min_lr = 1e-6, 
 )
 
 best_val_rmse = float("inf")
-model_out = getattr(config, "MODEL_OUT", "models/output/model_best.pth")
+model_out = getattr(config, "MODEL_OUT", "model/output/model_best.pth")
 Path(model_out).parent.mkdir(parents=True, exist_ok=True)
 
 # -------------------------
@@ -97,52 +113,77 @@ Path(model_out).parent.mkdir(parents=True, exist_ok=True)
 for epoch in range(config.EPOCHS):
     model.train()
     train_loss_sum = 0.0
-    train_rmse_sum = 0.0
+    train_sse = 0.0
+    train_n = 0
     train_batches = 0
 
-    for batch in train_loader:
-        x = batch["image"].to(device)
-        y = batch["label"].to(device)
+    optimizer.zero_grad(set_to_none=True)
 
-        pred = model(x)
-        loss = criterion(pred, y)
+    for step, batch in enumerate(train_loader):
+        s2 = batch["s2"].to(device, non_blocking=True)
+        s1 = batch["s1"].to(device, non_blocking=True)
+        y  = batch["label"].to(device, non_blocking=True)
 
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
+        with torch.cuda.amp.autocast(enabled=use_amp):
+            pred = model(s2, s1)
+            raw_loss = criterion(pred, y)
+            loss = raw_loss / accum_steps
 
-        # Gradient Clip
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
+        scaler.scale(loss).backward()
 
-        train_loss_sum += loss.item()
-        train_rmse_sum += rmse(pred.detach(), y)
+        train_loss_sum += raw_loss.item()
+        diff = pred.detach().float() - y.float()
+        train_sse += torch.sum(diff * diff).item()
+        train_n += diff.numel()
         train_batches += 1
 
-    avg_train_loss = train_loss_sum / max(train_batches, 1)
-    avg_train_rmse = train_rmse_sum / max(train_batches, 1)
+        if (step + 1) % accum_steps == 0:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad(set_to_none=True)
 
+    # flush leftover gradients
+    if (step + 1) % accum_steps != 0:
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad(set_to_none=True)
+
+    avg_train_loss = train_loss_sum / max(train_batches, 1)
+    avg_train_rmse = (train_sse / max(train_n, 1)) ** 0.5
+
+    # -------------------------
     # Validation
+    # -------------------------
     model.eval()
     val_loss_sum = 0.0
-    val_rmse_sum = 0.0
     val_batches = 0
+    val_sse = 0.0
+    val_n = 0
 
     with torch.no_grad():
         for batch in val_loader:
-            x = batch["image"].to(device)
-            y = batch["label"].to(device)
+            s2 = batch["s2"].to(device, non_blocking=True)
+            s1 = batch["s1"].to(device, non_blocking=True)
+            y  = batch["label"].to(device, non_blocking=True)
 
-            pred = model(x)
-            loss = criterion(pred, y)
+            with torch.cuda.amp.autocast(enabled=use_amp):
+                pred = model(s2, s1)
+                vloss = criterion(pred, y)
 
-            val_loss_sum += loss.item()
-            val_rmse_sum += rmse(pred, y)
+            val_loss_sum += vloss.item()
             val_batches += 1
 
-    avg_val_loss = val_loss_sum / max(val_batches, 1)
-    avg_val_rmse = val_rmse_sum / max(val_batches, 1)
+            batch_sse, batch_n = sse_and_count(pred.float(), y.float())
+            val_sse += batch_sse
+            val_n += batch_n
 
-    # Update LR
+    avg_val_loss = val_loss_sum / max(val_batches, 1)
+    avg_val_rmse = (val_sse / max(val_n, 1)) ** 0.5
+
     scheduler.step(avg_val_rmse)
     current_lr = optimizer.param_groups[0]["lr"]
 
@@ -153,7 +194,6 @@ for epoch in range(config.EPOCHS):
         f"LR: {current_lr:.2e}"
     )
 
-    # Save best model
     if avg_val_rmse < best_val_rmse:
         best_val_rmse = avg_val_rmse
         torch.save(model.state_dict(), model_out)

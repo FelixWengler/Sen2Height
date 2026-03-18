@@ -1,24 +1,36 @@
-# sentinel2_dsm_regression/config.py
+# -----------------------
+# Training Settings
+# -----------------------
 
-#--Training Settings--#
+# Folder-based train/val inputs (expected subfolders: S2/ S1/ and BDOM/)
+TRAIN_ROOT = "/data/ahsoka/eocp/wengler/height_database/train"
+VAL_ROOT   = "/data/ahsoka/eocp/wengler/height_database/val"
 
-SENTINEL_DIR = "data/sentinel/20230708_SEN2A_clip_25832.tif"
-DSM_DIR = "data/dsm/dgm10_repaired.tif"
-PATCH_SIZE = 64
-BATCH_SIZE = 8
-EPOCHS = 10
-LEARNING_RATE = 1e-3
-NUM_BANDS = 10  # Number of input bands from Sentinel-2
+BATCH_SIZE = 4
+EPOCHS = 70
+LEARNING_RATE = 1e-4
+NUM_BANDS = 10  # number of Sentinel-2 bands in your chips
+S1_BANDS = 3
+
+DEVICE = "cuda"  # or "cpu"
+
+# Optional performance knobs
+NUM_WORKERS = 4     # start with 0 or small number; increase if stable
+NUM_THREADS = 28       # CPU threads for torch
+AUGMENT = True         # if your dataset supports augment=True/False
+
+# Output paths
+MODEL_OUT = "/data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/TEST_DELETE.pth"
+LOG_PATH = "/data/ahsoka/eocp/wengler/Sen2height_dualenc/model/log/TEST_DELETE.log"
 
 
-DEVICE = "cpu"  # or "cuda"
-
-#--Prediction settings--#
-
-PREDICTION_INPUT = "/data/ahsoka/dc/deu/ard/X0056_Y0050/20240625_LEVEL2_SEN2A_BOA.tif"
-PREDICTION_OUTPUT = "/data/ahsoka/student/s1feweng/Sen2Height_main/predictions/force_predict/X0056_Y0050_smooth/20240625_SEN2A_HEIGHT.tif"
-PREDICTION_PATCH_SIZE = 32
-PREDICTION_MODEL = "models/output/model_230708_56_50_2m_final.pth"
-PREDICTION_WORKERS = 20  # Number of CPU cores to use
-PREDICTION_BATCH_SIZE = 8  # Number of patches predicted at once
-
+# -----------------------
+# Prediction Settings
+# -----------------------
+PREDICTION_INPUT = "/data/ahsoka/eocp/wengler/height_database/composite/median/0608/25832/2025_0608_median_25832.tif"
+PREDICTION_INPUT_S1_ALIGNED = "/data/ahsoka/eocp/wengler/height_database/S1/res/S1_2025_VH_VV_stack_clip_res.tif"
+PREDICTION_OUTPUT = "/data/ahsoka/eocp/wengler/Sen2height_dualenc/predictions/2025_21022026_firsttry.tif"
+PREDICTION_PATCH_SIZE = 256
+PREDICTION_MODEL = "/data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/S1_firsttest_20022026_2.82m.pth"
+PREDICTION_WORKERS = 30
+PREDICTION_BATCH_SIZE = 8
