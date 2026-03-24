@@ -3,13 +3,13 @@
 # -----------------------
 
 # Folder-based train/val inputs (expected subfolders: S2/ S1/ and BDOM/)
-TRAIN_ROOT = "/data/ahsoka/eocp/wengler/height_database/train"
-VAL_ROOT   = "/data/ahsoka/eocp/wengler/height_database/val"
+TRAIN_ROOT = "/data/ahsoka/eocp/wengler/height_database/spline/train"
+VAL_ROOT   = "/data/ahsoka/eocp/wengler/height_database/spline/val"
 
 BATCH_SIZE = 4
 EPOCHS = 70
 LEARNING_RATE = 1e-4
-NUM_BANDS = 10  # number of Sentinel-2 bands in your chips
+NUM_BANDS = 220  # number of Sentinel-2 bands in your chips
 S1_BANDS = 3
 
 DEVICE = "cuda"  # or "cpu"
@@ -20,8 +20,8 @@ NUM_THREADS = 28       # CPU threads for torch
 AUGMENT = True         # if your dataset supports augment=True/False
 
 # Output paths
-MODEL_OUT = "/data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/TEST_DELETE.pth"
-LOG_PATH = "/data/ahsoka/eocp/wengler/Sen2height_dualenc/model/log/TEST_DELETE.log"
+MODEL_OUT = "/data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth"
+LOG_PATH = "/data/ahsoka/eocp/wengler/Sen2height_dualenc/model/log/splinetest1_23032026.log"
 
 
 # -----------------------

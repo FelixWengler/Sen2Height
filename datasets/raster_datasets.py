@@ -11,7 +11,7 @@ class S2S1DSMTileFolderDataset(Dataset):
     Expected structure:
       root/
         S2_0608/
-          x0085_y0059_2018.tif        (C=10, H=256, W=256)
+          x0085_y0059_2018.tif        (C=220, H=256, W=256)
         S1_0608/
           x0085_y0059_2018.tif        (C=2,  H=128, W=128)  [VH,VV]
         BDOM/
@@ -21,9 +21,9 @@ class S2S1DSMTileFolderDataset(Dataset):
     def __init__(
         self,
         root_dir,
-        s2_subdir="S2_0608",
+        s2_subdir="spline",
         s1_subdir="S1",
-        dsm_subdir="BDOM",
+        dsm_subdir="bdom",
         s2_divisor=10000.0,
         s2_clamp01=True,
         s1_nodata=-32768.0,

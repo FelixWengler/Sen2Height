@@ -2,7 +2,8 @@ data
 data/sentinel/
 
 
-models/output/
+model/output/
+model/log/
 
 utils/figures/
 utils/APU.py
