@@ -1,0 +1,103 @@
+2026-03-23 12:24:58,121 Starting Sen2Height tiled training run
+2026-03-23 12:24:58,139 Using device: cuda
+2026-03-23 12:24:59,450 Train tiles: 1671 | Val tiles: 573
+2026-03-23 12:33:09,368 Epoch 1/70 - Train Loss: 4.9404, RMSE: 8.6833 | Val Loss: 3.0836, RMSE: 6.0084 | LR: 1.00e-04
+2026-03-23 12:33:09,989 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 12:42:03,511 Epoch 2/70 - Train Loss: 2.9319, RMSE: 5.0354 | Val Loss: 3.1058, RMSE: 6.1254 | LR: 1.00e-04
+2026-03-23 12:50:56,954 Epoch 3/70 - Train Loss: 2.5800, RMSE: 4.4648 | Val Loss: 2.4929, RMSE: 5.2021 | LR: 1.00e-04
+2026-03-23 12:50:57,595 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 12:59:51,892 Epoch 4/70 - Train Loss: 2.3829, RMSE: 4.1580 | Val Loss: 2.2701, RMSE: 4.8603 | LR: 1.00e-04
+2026-03-23 12:59:52,533 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 13:08:46,007 Epoch 5/70 - Train Loss: 2.3041, RMSE: 4.0527 | Val Loss: 2.2560, RMSE: 4.8811 | LR: 1.00e-04
+2026-03-23 13:17:43,098 Epoch 6/70 - Train Loss: 2.2072, RMSE: 3.8969 | Val Loss: 2.0838, RMSE: 4.5944 | LR: 1.00e-04
+2026-03-23 13:17:43,716 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 13:26:36,329 Epoch 7/70 - Train Loss: 2.1196, RMSE: 3.7514 | Val Loss: 2.0236, RMSE: 4.4753 | LR: 1.00e-04
+2026-03-23 13:26:36,944 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 13:35:31,873 Epoch 8/70 - Train Loss: 2.0478, RMSE: 3.6286 | Val Loss: 2.1033, RMSE: 4.6319 | LR: 1.00e-04
+2026-03-23 13:44:25,845 Epoch 9/70 - Train Loss: 2.0194, RMSE: 3.5898 | Val Loss: 1.9933, RMSE: 4.4430 | LR: 1.00e-04
+2026-03-23 13:44:26,456 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 13:53:19,749 Epoch 10/70 - Train Loss: 1.9785, RMSE: 3.5187 | Val Loss: 1.9180, RMSE: 4.3514 | LR: 1.00e-04
+2026-03-23 13:53:20,378 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 14:02:14,573 Epoch 11/70 - Train Loss: 2.0539, RMSE: 3.6612 | Val Loss: 1.9109, RMSE: 4.3258 | LR: 1.00e-04
+2026-03-23 14:02:15,195 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 14:11:08,933 Epoch 12/70 - Train Loss: 1.9032, RMSE: 3.3982 | Val Loss: 1.9013, RMSE: 4.3619 | LR: 1.00e-04
+2026-03-23 14:20:03,902 Epoch 13/70 - Train Loss: 1.8820, RMSE: 3.3689 | Val Loss: 1.9123, RMSE: 4.3573 | LR: 1.00e-04
+2026-03-23 14:29:00,141 Epoch 14/70 - Train Loss: 1.9042, RMSE: 3.4014 | Val Loss: 1.8271, RMSE: 4.2482 | LR: 1.00e-04
+2026-03-23 14:29:00,752 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 14:37:57,291 Epoch 15/70 - Train Loss: 1.8231, RMSE: 3.2671 | Val Loss: 1.8303, RMSE: 4.2554 | LR: 1.00e-04
+2026-03-23 14:46:51,509 Epoch 16/70 - Train Loss: 1.7883, RMSE: 3.2067 | Val Loss: 1.8348, RMSE: 4.2733 | LR: 1.00e-04
+2026-03-23 14:55:44,395 Epoch 17/70 - Train Loss: 1.7926, RMSE: 3.2153 | Val Loss: 1.7994, RMSE: 4.2280 | LR: 1.00e-04
+2026-03-23 14:55:45,016 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 15:04:39,190 Epoch 18/70 - Train Loss: 1.7563, RMSE: 3.1568 | Val Loss: 1.7417, RMSE: 4.1393 | LR: 1.00e-04
+2026-03-23 15:04:39,806 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 15:13:34,497 Epoch 19/70 - Train Loss: 1.7524, RMSE: 3.1542 | Val Loss: 1.7112, RMSE: 4.0961 | LR: 1.00e-04
+2026-03-23 15:13:36,325 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 15:22:31,327 Epoch 20/70 - Train Loss: 1.7400, RMSE: 3.1251 | Val Loss: 1.7091, RMSE: 4.0737 | LR: 1.00e-04
+2026-03-23 15:22:31,945 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 15:31:33,642 Epoch 21/70 - Train Loss: 1.6994, RMSE: 3.0582 | Val Loss: 1.7095, RMSE: 4.1135 | LR: 1.00e-04
+2026-03-23 15:40:35,138 Epoch 22/70 - Train Loss: 1.6771, RMSE: 3.0218 | Val Loss: 1.8174, RMSE: 4.2404 | LR: 1.00e-04
+2026-03-23 15:49:29,910 Epoch 23/70 - Train Loss: 1.6386, RMSE: 2.9569 | Val Loss: 1.6611, RMSE: 4.0397 | LR: 1.00e-04
+2026-03-23 15:49:30,528 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 15:58:26,290 Epoch 24/70 - Train Loss: 1.6614, RMSE: 2.9933 | Val Loss: 1.7389, RMSE: 4.1453 | LR: 1.00e-04
+2026-03-23 16:07:21,531 Epoch 25/70 - Train Loss: 1.6317, RMSE: 2.9504 | Val Loss: 1.7346, RMSE: 4.1551 | LR: 1.00e-04
+2026-03-23 16:16:16,889 Epoch 26/70 - Train Loss: 1.6578, RMSE: 2.9862 | Val Loss: 1.6984, RMSE: 4.0930 | LR: 1.00e-04
+2026-03-23 16:25:10,253 Epoch 27/70 - Train Loss: 1.6283, RMSE: 2.9455 | Val Loss: 1.6580, RMSE: 4.0358 | LR: 1.00e-04
+2026-03-23 16:25:10,861 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 16:34:05,676 Epoch 28/70 - Train Loss: 1.5918, RMSE: 2.8811 | Val Loss: 1.6359, RMSE: 4.0076 | LR: 1.00e-04
+2026-03-23 16:34:06,311 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 16:43:01,879 Epoch 29/70 - Train Loss: 1.5859, RMSE: 2.8754 | Val Loss: 1.5926, RMSE: 3.9436 | LR: 1.00e-04
+2026-03-23 16:43:02,486 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 16:52:04,735 Epoch 30/70 - Train Loss: 1.5662, RMSE: 2.8390 | Val Loss: 1.6357, RMSE: 3.9945 | LR: 1.00e-04
+2026-03-23 17:00:59,773 Epoch 31/70 - Train Loss: 1.5824, RMSE: 2.8644 | Val Loss: 1.7279, RMSE: 4.1288 | LR: 1.00e-04
+2026-03-23 17:09:53,693 Epoch 32/70 - Train Loss: 1.5734, RMSE: 2.8533 | Val Loss: 1.6333, RMSE: 4.0227 | LR: 1.00e-04
+2026-03-23 17:18:49,208 Epoch 33/70 - Train Loss: 1.5271, RMSE: 2.7722 | Val Loss: 1.5615, RMSE: 3.9140 | LR: 1.00e-04
+2026-03-23 17:18:49,813 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 17:27:43,262 Epoch 34/70 - Train Loss: 1.5398, RMSE: 2.7963 | Val Loss: 1.6141, RMSE: 3.9851 | LR: 1.00e-04
+2026-03-23 17:36:39,690 Epoch 35/70 - Train Loss: 1.5380, RMSE: 2.7896 | Val Loss: 1.5532, RMSE: 3.8924 | LR: 1.00e-04
+2026-03-23 17:36:40,297 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 17:45:36,241 Epoch 36/70 - Train Loss: 1.5202, RMSE: 2.7667 | Val Loss: 1.5932, RMSE: 3.9541 | LR: 1.00e-04
+2026-03-23 17:54:37,778 Epoch 37/70 - Train Loss: 1.4984, RMSE: 2.7267 | Val Loss: 1.5266, RMSE: 3.8622 | LR: 1.00e-04
+2026-03-23 17:54:38,412 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 18:03:31,814 Epoch 38/70 - Train Loss: 1.4904, RMSE: 2.7141 | Val Loss: 1.5543, RMSE: 3.9125 | LR: 1.00e-04
+2026-03-23 18:12:26,154 Epoch 39/70 - Train Loss: 1.4916, RMSE: 2.7179 | Val Loss: 1.5246, RMSE: 3.8522 | LR: 1.00e-04
+2026-03-23 18:12:26,775 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 18:21:19,348 Epoch 40/70 - Train Loss: 1.4669, RMSE: 2.6748 | Val Loss: 1.4962, RMSE: 3.8341 | LR: 1.00e-04
+2026-03-23 18:21:19,978 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 18:30:13,374 Epoch 41/70 - Train Loss: 1.4620, RMSE: 2.6685 | Val Loss: 1.5023, RMSE: 3.8328 | LR: 1.00e-04
+2026-03-23 18:30:13,999 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 18:39:08,122 Epoch 42/70 - Train Loss: 1.4644, RMSE: 2.6709 | Val Loss: 1.5684, RMSE: 3.9351 | LR: 1.00e-04
+2026-03-23 18:48:03,607 Epoch 43/70 - Train Loss: 1.4430, RMSE: 2.6374 | Val Loss: 1.5580, RMSE: 3.8973 | LR: 1.00e-04
+2026-03-23 18:56:59,011 Epoch 44/70 - Train Loss: 1.4506, RMSE: 2.6495 | Val Loss: 1.5202, RMSE: 3.8676 | LR: 1.00e-04
+2026-03-23 19:05:57,441 Epoch 45/70 - Train Loss: 1.4602, RMSE: 2.6613 | Val Loss: 1.5389, RMSE: 3.8784 | LR: 1.00e-04
+2026-03-23 19:14:54,982 Epoch 46/70 - Train Loss: 1.4363, RMSE: 2.6245 | Val Loss: 1.5323, RMSE: 3.8859 | LR: 1.00e-04
+2026-03-23 19:24:05,635 Epoch 47/70 - Train Loss: 1.4139, RMSE: 2.5882 | Val Loss: 1.5000, RMSE: 3.8379 | LR: 5.00e-05
+2026-03-23 19:32:59,260 Epoch 48/70 - Train Loss: 1.3797, RMSE: 2.5347 | Val Loss: 1.4481, RMSE: 3.7558 | LR: 5.00e-05
+2026-03-23 19:32:59,868 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 19:41:56,980 Epoch 49/70 - Train Loss: 1.3643, RMSE: 2.5130 | Val Loss: 1.4236, RMSE: 3.7440 | LR: 5.00e-05
+2026-03-23 19:41:57,590 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 19:50:52,110 Epoch 50/70 - Train Loss: 1.3567, RMSE: 2.5007 | Val Loss: 1.4293, RMSE: 3.7580 | LR: 5.00e-05
+2026-03-23 19:59:49,163 Epoch 51/70 - Train Loss: 1.3507, RMSE: 2.4903 | Val Loss: 1.4277, RMSE: 3.7475 | LR: 5.00e-05
+2026-03-23 20:08:43,082 Epoch 52/70 - Train Loss: 1.3457, RMSE: 2.4815 | Val Loss: 1.4350, RMSE: 3.7649 | LR: 5.00e-05
+2026-03-23 20:17:36,674 Epoch 53/70 - Train Loss: 1.3363, RMSE: 2.4685 | Val Loss: 1.4245, RMSE: 3.7536 | LR: 5.00e-05
+2026-03-23 20:26:31,192 Epoch 54/70 - Train Loss: 1.3409, RMSE: 2.4736 | Val Loss: 1.4334, RMSE: 3.7526 | LR: 5.00e-05
+2026-03-23 20:35:29,519 Epoch 55/70 - Train Loss: 1.3274, RMSE: 2.4534 | Val Loss: 1.4490, RMSE: 3.7740 | LR: 2.50e-05
+2026-03-23 20:44:23,929 Epoch 56/70 - Train Loss: 1.3055, RMSE: 2.4201 | Val Loss: 1.4081, RMSE: 3.7237 | LR: 2.50e-05
+2026-03-23 20:44:24,546 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 20:53:19,384 Epoch 57/70 - Train Loss: 1.2978, RMSE: 2.4087 | Val Loss: 1.4276, RMSE: 3.7358 | LR: 2.50e-05
+2026-03-23 21:02:14,518 Epoch 58/70 - Train Loss: 1.2985, RMSE: 2.4099 | Val Loss: 1.3977, RMSE: 3.7132 | LR: 2.50e-05
+2026-03-23 21:02:15,122 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 21:11:08,740 Epoch 59/70 - Train Loss: 1.2889, RMSE: 2.3959 | Val Loss: 1.4236, RMSE: 3.7433 | LR: 2.50e-05
+2026-03-23 21:20:06,369 Epoch 60/70 - Train Loss: 1.2855, RMSE: 2.3901 | Val Loss: 1.4173, RMSE: 3.7426 | LR: 2.50e-05
+2026-03-23 21:29:18,516 Epoch 61/70 - Train Loss: 1.2806, RMSE: 2.3830 | Val Loss: 1.4056, RMSE: 3.7170 | LR: 2.50e-05
+2026-03-23 21:38:13,228 Epoch 62/70 - Train Loss: 1.2774, RMSE: 2.3784 | Val Loss: 1.3927, RMSE: 3.7048 | LR: 2.50e-05
+2026-03-23 21:38:13,878 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 21:47:08,215 Epoch 63/70 - Train Loss: 1.2721, RMSE: 2.3694 | Val Loss: 1.4114, RMSE: 3.7289 | LR: 2.50e-05
+2026-03-23 21:56:03,282 Epoch 64/70 - Train Loss: 1.2694, RMSE: 2.3663 | Val Loss: 1.4044, RMSE: 3.7241 | LR: 2.50e-05
+2026-03-23 22:05:00,600 Epoch 65/70 - Train Loss: 1.2682, RMSE: 2.3639 | Val Loss: 1.3966, RMSE: 3.7145 | LR: 2.50e-05
+2026-03-23 22:13:53,116 Epoch 66/70 - Train Loss: 1.2630, RMSE: 2.3542 | Val Loss: 1.3938, RMSE: 3.7115 | LR: 2.50e-05
+2026-03-23 22:22:46,110 Epoch 67/70 - Train Loss: 1.2603, RMSE: 2.3510 | Val Loss: 1.3908, RMSE: 3.7101 | LR: 2.50e-05
+2026-03-23 22:31:40,201 Epoch 68/70 - Train Loss: 1.2573, RMSE: 2.3475 | Val Loss: 1.3989, RMSE: 3.7185 | LR: 1.25e-05
+2026-03-23 22:40:34,478 Epoch 69/70 - Train Loss: 1.2436, RMSE: 2.3271 | Val Loss: 1.3906, RMSE: 3.7045 | LR: 1.25e-05
+2026-03-23 22:40:35,228 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth
+2026-03-23 22:49:28,814 Epoch 70/70 - Train Loss: 1.2408, RMSE: 2.3226 | Val Loss: 1.3871, RMSE: 3.7043 | LR: 1.25e-05
+2026-03-23 22:49:29,413 Saved new best model to /data/ahsoka/eocp/wengler/Sen2height_dualenc/model/output/Spline/splinetest1_23032026.pth

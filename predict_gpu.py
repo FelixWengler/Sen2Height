@@ -214,7 +214,7 @@ def main():
     output_path = config.PREDICTION_OUTPUT
 
     # load model
-    model = Sentinel2ResUNet(in_channels=config.NUM_BANDS, s1_in_channels=config.S1_BANDS  # must support forward(s2, s1)
+    model = Sentinel2ResUNet(in_channels=config.NUM_BANDS, s1_in_channels=config.S1_BANDS ) # must support forward(s2, s1)
     model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.to(device)
     model.eval()
@@ -279,11 +279,15 @@ def main():
                         inner_left: inner_left + tile_w
                     ]
 
-                    pred_center = np.clip(pred_center, 0.0, 1.0)
-                    pred_center_u8 = np.rint(pred_center * 100.0).astype(np.uint8)
-                    dst.write(pred_center_u8, 1, window=Window(left, top, tile_w, tile_h))
+                    pred_center = pred[
+                        inner_top : inner_top + tile_h,
+                        inner_left: inner_left + tile_w
+                    ]
 
-                    out_profile.update(count=1, dtype=rasterio.uint8, nodata=255)
+                    # Optional: prevent negative heights
+                    pred_center = np.maximum(pred_center, 0.0)
+
+                    dst.write(pred_center.astype(np.float32), 1, window=Window(left, top, tile_w, tile_h))
 
 
 if __name__ == "__main__":
