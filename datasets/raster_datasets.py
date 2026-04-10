@@ -4,18 +4,19 @@ from torch.utils.data import Dataset
 import rasterio
 import numpy as np
 
+
 class S2S1DSMTileFolderDataset(Dataset):
     """
-    Dataset that reads tiled Sentinel-2 + Sentinel-1 + DSM chips from folders.
+    Dataset that reads tiled Sentinel-2 spline coeffs + Sentinel-1 + DSM chips.
 
     Expected structure:
       root/
-        S2_0608/
-          x0085_y0059_2018.tif        (C=220, H=256, W=256)
-        S1_0608/
-          x0085_y0059_2018.tif        (C=2,  H=128, W=128)  [VH,VV]
-        BDOM/
-          x0085_y0059_2018.tif        (C=1,  H=256, W=256)
+        spline/
+          x0085_y0059_2018.tif   (C=220, H=256, W=256)
+        S1/
+          x0085_y0059_2018.tif   (C=2,   H=256, W=256)  [VH, VV] at 10m
+        bdom/
+          x0085_y0059_2018.tif   (C=1,   H=256, W=256)
     """
 
     def __init__(
@@ -28,6 +29,8 @@ class S2S1DSMTileFolderDataset(Dataset):
         s2_clamp01=True,
         s1_nodata=-32768.0,
         s1_use_log1p=True,
+        add_s1_ratio=True,
+        check_shapes=True,
         transforms=None,
     ):
         self.root = Path(root_dir)
@@ -44,11 +47,12 @@ class S2S1DSMTileFolderDataset(Dataset):
 
         self.s2_divisor = float(s2_divisor)
         self.s2_clamp01 = bool(s2_clamp01)
-        self.s1_nodata = float(s1_nodata)
+        self.s1_nodata = s1_nodata
         self.s1_use_log1p = bool(s1_use_log1p)
+        self.add_s1_ratio = bool(add_s1_ratio)
+        self.check_shapes = bool(check_shapes)
         self.transforms = transforms
 
-        # build list of triplets: require S2, S1, DSM all exist with same name
         self.files = sorted([
             f for f in self.s2_dir.glob("*.tif")
             if (self.s1_dir / f.name).exists() and (self.dsm_dir / f.name).exists()
@@ -63,7 +67,7 @@ class S2S1DSMTileFolderDataset(Dataset):
     @staticmethod
     def _read(path: Path) -> np.ndarray:
         with rasterio.open(path) as src:
-            arr = src.read()  # (C,H,W) or (1,H,W)
+            arr = src.read()  # (C,H,W)
         return arr.astype(np.float32)
 
     def __getitem__(self, idx):
@@ -77,29 +81,52 @@ class S2S1DSMTileFolderDataset(Dataset):
         if self.s2_clamp01:
             s2 = torch.clamp(s2, 0.0, 1.0)
 
-        # ---- S1 (20m) ----
-        s1 = torch.from_numpy(self._read(s1_path)).float()   # (2,128,128) [VH,VV]
+        # ---- S1 (10m) ----
+        s1 = torch.from_numpy(self._read(s1_path)).float()   # expected (2,256,256)
+        if s1.ndim == 2:
+            s1 = s1.unsqueeze(0)
+
+        if s1.shape[0] != 2:
+            raise ValueError(f"Expected 2 S1 bands [VH,VV], got shape {tuple(s1.shape)} for {s1_path}")
+
         # nodata handling
         if self.s1_nodata is not None:
-            s1 = torch.where(s1 == self.s1_nodata, torch.zeros_like(s1), s1)
+            s1 = torch.where(s1 == float(self.s1_nodata), torch.zeros_like(s1), s1)
 
-        # range compression (recommended for linear-scale SAR)
+        # range compression for linear SAR inputs
         if self.s1_use_log1p:
             s1 = torch.log1p(torch.clamp(s1, min=0.0))
 
-        # Optional: add log-ratio channel (often helps)
-        # VH=band0, VV=band1 after your convention
-        vh = s1[0:1]
-        vv = s1[1:2]
-        ratio = vh - vv  # in log space: log(VH/VV)
-        s1 = torch.cat([s1, ratio], dim=0)  # now (3,128,128)
+        if self.add_s1_ratio:
+            vh = s1[0:1]
+            vv = s1[1:2]
+            ratio = vh - vv   # log(VH/VV) if in log space
+            s1 = torch.cat([s1, ratio], dim=0)  # (3,H,W)
 
         # ---- DSM (10m) ----
         dsm = torch.from_numpy(self._read(dsm_path)).float()
         if dsm.ndim == 2:
-            dsm = dsm[None, ...]  # (1,H,W)
+            dsm = dsm.unsqueeze(0)
 
-        sample = {"s2": s2, "s1": s1, "label": dsm}
+        # ---- shape checks ----
+        if self.check_shapes:
+            if s2.shape[1:] != dsm.shape[1:]:
+                raise ValueError(
+                    f"S2 and DSM shape mismatch for {s2_path.name}: "
+                    f"s2={tuple(s2.shape)}, dsm={tuple(dsm.shape)}"
+                )
+            if s1.shape[1:] != s2.shape[1:]:
+                raise ValueError(
+                    f"S1 and S2 shape mismatch for {s2_path.name}: "
+                    f"s1={tuple(s1.shape)}, s2={tuple(s2.shape)}"
+                )
+
+        sample = {
+            "s2": s2,                  # (220,256,256)
+            "s1": s1,                  # (3,256,256)
+            "label": dsm,              # (1,256,256)
+            "name": s2_path.stem,
+        }
 
         if self.transforms:
             sample = self.transforms(sample)

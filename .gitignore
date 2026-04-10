@@ -1,7 +1,7 @@
 data
 data/sentinel/
 
-
+runs/
 model/output/
 model/log/
 
@@ -12,3 +12,5 @@ utils/Densityplot.py
 utils/Weight_calc.py
 
 predictions
+runs/spline_S110m/events.out.tfevents.1775140469.fernserv04.2018256.0
+model/__pycache__/height_net.cpython-312.pyc
