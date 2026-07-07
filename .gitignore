@@ -1,12 +1,15 @@
 data
 data/sentinel/
 
+__pycache__
+
 runs/
 model/output/
 model/log/
 
 utils/figures/
 utils/APU.py
+utils/APU_DC.py
 utils/delete.py
 utils/Densityplot.py
 utils/Weight_calc.py

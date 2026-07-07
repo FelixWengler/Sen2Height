@@ -1,13 +1,12 @@
 import os
-import subprocess
 import tempfile
 from pathlib import Path
+from tqdm import tqdm
 
 import numpy as np
 import torch
 import rasterio
 from rasterio.windows import Window, from_bounds
-from tqdm import tqdm
 
 from model.height_net import Sentinel2ResUNet
 import config
@@ -31,6 +30,215 @@ def make_hann2d(size: int, eps: float = 1e-6) -> torch.Tensor:
 
 blend_window = make_hann2d(PATCH)
 
+def predict_force_tiles_from_vrt_chunked(model, s2_vrt: Path, s1_vrt: Path,
+                                         spline_root: Path, output_root: Path,
+                                         year: int, tile_allow=None):
+
+    tile_dirs = sorted([
+        p for p in spline_root.iterdir()
+        if p.is_dir() and p.name.startswith("X")
+    ])
+
+    if tile_allow is not None:
+        tile_dirs = [p for p in tile_dirs if p.name in tile_allow]
+
+    with rasterio.open(s2_vrt) as s2_src, rasterio.open(s1_vrt) as s1_src:
+
+        assert s2_src.crs == s1_src.crs
+        assert s2_src.transform == s1_src.transform
+        assert s2_src.width == s1_src.width
+        assert s2_src.height == s1_src.height
+
+        if s2_src.count != config.NUM_BANDS:
+            raise ValueError(
+                f"S2 VRT has {s2_src.count} bands, expected {config.NUM_BANDS}"
+            )
+
+        if s1_src.count != 2:
+            raise ValueError(
+                f"S1 VRT has {s1_src.count} bands, expected 2"
+            )
+
+        for tile_dir in tqdm(tile_dirs, desc=f"Predicting {year} tiles"):
+
+            tile_name = tile_dir.name
+            ref_tile = tile_dir / f"ThermSpline_coefs_{year}.tif"
+
+            if not ref_tile.exists():
+                continue
+
+            out_path = (
+                output_root
+                / str(year)
+                / tile_name
+                / f"height_{year}.tif"
+            )
+
+            # resume support
+            if out_path.exists():
+                try:
+                    with rasterio.open(out_path) as check:
+                        if (
+                            check.count == 1
+                            and check.width > 0
+                            and check.height > 0
+                        ):
+                            tqdm.write(
+                                f"Skipping {tile_name}: output already exists"
+                            )
+                            continue
+                except Exception:
+                    tqdm.write(
+                        f"Recomputing {tile_name}: existing output invalid"
+                    )
+
+            with rasterio.open(ref_tile) as ref_src:
+
+                tile_window = from_bounds(
+                    *ref_src.bounds,
+                    transform=s2_src.transform
+                )
+                tile_window = (
+                    tile_window
+                    .round_offsets()
+                    .round_lengths()
+                )
+
+                tile_left = int(tile_window.col_off)
+                tile_top = int(tile_window.row_off)
+                tile_w = int(tile_window.width)
+                tile_h = int(tile_window.height)
+
+                out_path.parent.mkdir(
+                    parents=True,
+                    exist_ok=True
+                )
+
+                profile = ref_src.profile.copy()
+                profile.update(
+                    count=1,
+                    dtype=rasterio.float32,
+                    nodata=-9999.0,
+                    compress="lzw",
+                )
+
+                with rasterio.open(out_path, "w", **profile) as dst:
+
+                    for inner_top in range(0, tile_h, TILE):
+
+                        chunk_h = min(
+                            TILE,
+                            tile_h - inner_top
+                        )
+
+                        for inner_left in range(0, tile_w, TILE):
+
+                            chunk_w = min(
+                                TILE,
+                                tile_w - inner_left
+                            )
+
+                            global_top = tile_top + inner_top
+                            global_left = tile_left + inner_left
+
+                            r0 = max(
+                                0,
+                                global_top - HALO
+                            )
+                            c0 = max(
+                                0,
+                                global_left - HALO
+                            )
+
+                            r1 = min(
+                                s2_src.height,
+                                global_top + chunk_h + HALO
+                            )
+                            c1 = min(
+                                s2_src.width,
+                                global_left + chunk_w + HALO
+                            )
+
+                            read_window = Window(
+                                c0,
+                                r0,
+                                c1 - c0,
+                                r1 - r0
+                            )
+
+                            s2_np = s2_src.read(
+                                window=read_window
+                            )
+                            s1_np = s1_src.read(
+                                window=read_window
+                            )
+
+                            orig_h = s2_np.shape[1]
+                            orig_w = s2_np.shape[2]
+
+                            s2_np, _, _ = pad_array_for_sliding(
+                                s2_np,
+                                PATCH,
+                                STRIDE,
+                                pad_value=0,
+                            )
+
+                            s1_np, _, _ = pad_array_for_sliding(
+                                s1_np,
+                                PATCH,
+                                STRIDE,
+                                pad_value=0,
+                            )
+
+                            pred = predict_tile(
+                                model,
+                                s2_np,
+                                s1_np,
+                                s2_nodata=s2_src.nodata,
+                                s1_nodata=s1_src.nodata,
+                                nodata_eps=0,
+                                out_nodata_value=-9999.0,
+                            )
+
+                            pred = pred[
+                                :orig_h,
+                                :orig_w
+                            ]
+
+                            crop_top = (
+                                global_top - r0
+                            )
+                            crop_left = (
+                                global_left - c0
+                            )
+
+                            pred_chunk = pred[
+                                crop_top:crop_top + chunk_h,
+                                crop_left:crop_left + chunk_w,
+                            ]
+
+                            if pred_chunk.shape != (
+                                chunk_h,
+                                chunk_w,
+                            ):
+                                raise ValueError(
+                                    f"Chunk shape mismatch for {tile_name}: "
+                                    f"got {pred_chunk.shape}, "
+                                    f"expected {(chunk_h, chunk_w)}"
+                                )
+
+                            dst.write(
+                                pred_chunk.astype(np.float32),
+                                1,
+                                window=Window(
+                                    inner_left,
+                                    inner_top,
+                                    chunk_w,
+                                    chunk_h,
+                                ),
+                            )
+
+            tqdm.write(f"Wrote {out_path}")
 
 def load_tile_list():
     tile_list_file = getattr(config, "PREDICTION_TILE_LIST_FILE", None)
@@ -120,17 +328,14 @@ def normalize_s2(tile_np: np.ndarray) -> torch.Tensor:
     return t
 
 
-def preprocess_s1_like_training(s1_patch_raw: torch.Tensor, s1_nodata):
-    # Keep identical to the currently trained model
+def preprocess_s1_like_training(s1_patch_raw: torch.Tensor, s1_nodata, s1_scale_factor=100.0):
     if s1_nodata is not None:
-        s1_patch_raw = torch.where(
-            s1_patch_raw == float(s1_nodata),
-            torch.zeros_like(s1_patch_raw),
-            s1_patch_raw,
-        )
+        nodata_mask = (s1_patch_raw == float(s1_nodata))
+    else:
+        nodata_mask = torch.zeros_like(s1_patch_raw, dtype=torch.bool)
 
-    s1_patch_raw = torch.clamp(s1_patch_raw, min=0.0)
-    s1_patch = torch.log1p(s1_patch_raw)
+    s1_patch = s1_patch_raw / s1_scale_factor
+    s1_patch = torch.where(nodata_mask, torch.zeros_like(s1_patch), s1_patch)
 
     vh = s1_patch[0:1]
     vv = s1_patch[1:2]
@@ -138,7 +343,6 @@ def preprocess_s1_like_training(s1_patch_raw: torch.Tensor, s1_nodata):
     s1_patch = torch.cat([s1_patch, ratio], dim=0)
 
     return s1_patch
-
 
 def load_model_for_inference(model_path: str):
     model = Sentinel2ResUNet(
@@ -186,7 +390,10 @@ def predict_tile(model, s2_np, s1_np, s2_nodata, s1_nodata, nodata_eps=0, out_no
 
             s2_patch = s2[:, i:i + PATCH, j:j + PATCH]
             s1_patch_raw = s1_raw[:, i:i + PATCH, j:j + PATCH]
-            s1_patch = preprocess_s1_like_training(s1_patch_raw, s1_nodata)
+            s1_patch = preprocess_s1_like_training(
+                s1_patch_raw,
+                s1_nodata,
+            )
 
             coords.append((i, j))
             patches_s2.append(s2_patch)
@@ -377,139 +584,6 @@ def collect_year_tile_pairs(spline_root: Path, s1_root: Path, year: int, tile_al
     return spline_paths, s1_paths, tile_names
 
 
-def predict_one_raster_pair(model, s2_path: Path, s1_path: Path, output_path: Path):
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with rasterio.open(s2_path) as s2_src, rasterio.open(s1_path) as s1_src:
-        assert s2_src.crs == s1_src.crs, f"CRS mismatch:\n{s2_path}\n{s1_path}"
-        assert s2_src.transform == s1_src.transform, f"Transform mismatch:\n{s2_path}\n{s1_path}"
-        assert s2_src.width == s1_src.width and s2_src.height == s1_src.height, f"Shape mismatch:\n{s2_path}\n{s1_path}"
-
-        if s2_src.count != config.NUM_BANDS:
-            raise ValueError(f"{s2_path} has {s2_src.count} bands, expected {config.NUM_BANDS}")
-
-        if s1_src.count != 2:
-            raise ValueError(f"{s1_path} has {s1_src.count} bands, expected 2")
-
-        s2_nodata = s2_src.nodata
-        s1_nodata = s1_src.nodata
-        h_total, w_total = s2_src.height, s2_src.width
-
-        out_profile = {
-            "driver": "GTiff",
-            "height": h_total,
-            "width": w_total,
-            "count": 1,
-            "dtype": rasterio.float32,
-            "crs": s2_src.crs,
-            "transform": s2_src.transform,
-            "nodata": -9999.0,
-            "compress": "lzw",
-        }
-
-        with rasterio.open(output_path, "w", **out_profile) as dst:
-            for top in tqdm(range(0, h_total, TILE), desc=f"Predicting {s2_path.name}"):
-                tile_h = min(TILE, h_total - top)
-
-                for left in range(0, w_total, TILE):
-                    tile_w = min(TILE, w_total - left)
-
-                    r0 = max(0, top - HALO)
-                    c0 = max(0, left - HALO)
-                    r1 = min(h_total, top + tile_h + HALO)
-                    c1 = min(w_total, left + tile_w + HALO)
-
-                    window = Window(c0, r0, c1 - c0, r1 - r0)
-
-                    s2_np = s2_src.read(window=window)
-                    s1_np = s1_src.read(window=window)
-
-                    orig_h = s2_np.shape[1]
-                    orig_w = s2_np.shape[2]
-
-                    s2_np, _, _ = pad_array_for_sliding(s2_np, PATCH, STRIDE, pad_value=0)
-                    s1_np, _, _ = pad_array_for_sliding(s1_np, PATCH, STRIDE, pad_value=0)
-
-                    pred = predict_tile(
-                        model,
-                        s2_np,
-                        s1_np,
-                        s2_nodata=s2_nodata,
-                        s1_nodata=s1_nodata,
-                        nodata_eps=0,
-                        out_nodata_value=-9999.0,
-                    )
-
-                    pred = pred[:orig_h, :orig_w]
-
-                    inner_top = top - r0
-                    inner_left = left - c0
-                    pred_center = pred[
-                        inner_top: inner_top + tile_h,
-                        inner_left: inner_left + tile_w,
-                    ]
-
-                    if pred_center.shape != (tile_h, tile_w):
-                        raise ValueError(
-                            f"pred_center shape mismatch for {s2_path.name}: "
-                            f"got {pred_center.shape}, expected {(tile_h, tile_w)}"
-                        )
-
-                    dst.write(
-                        pred_center.astype(np.float32),
-                        1,
-                        window=Window(left, top, tile_w, tile_h),
-                    )
-
-
-def chip_prediction_to_force_tiles(pred_path: Path, spline_root: Path, output_root: Path, year: int, tile_allow=None):
-    tile_dirs = sorted([
-        p for p in spline_root.iterdir()
-        if p.is_dir() and p.name.startswith("X")
-    ])
-
-    if tile_allow is not None:
-        tile_dirs = [p for p in tile_dirs if p.name in tile_allow]
-
-    with rasterio.open(pred_path) as pred_src:
-        for tile_dir in tile_dirs:
-            tile_name = tile_dir.name
-            ref_tile = tile_dir / f"ThermSpline_coefs_{year}.tif"
-
-            if not ref_tile.exists():
-                continue
-
-            out_path = output_root / str(year) / tile_name / f"height_{year}.tif"
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-
-            with rasterio.open(ref_tile) as ref_src:
-                if pred_src.crs != ref_src.crs:
-                    raise ValueError(f"CRS mismatch for tile {tile_name}")
-
-                window = from_bounds(*ref_src.bounds, transform=pred_src.transform)
-                window = window.round_offsets().round_lengths()
-
-                arr = pred_src.read(1, window=window)
-
-                if arr.shape != (ref_src.height, ref_src.width):
-                    raise ValueError(
-                        f"Chip shape mismatch for {tile_name}: "
-                        f"got {arr.shape}, expected {(ref_src.height, ref_src.width)}"
-                    )
-
-                profile = ref_src.profile.copy()
-                profile.update(
-                    count=1,
-                    dtype=rasterio.float32,
-                    nodata=pred_src.nodata if pred_src.nodata is not None else -9999.0,
-                    compress="lzw",
-                )
-
-                with rasterio.open(out_path, "w", **profile) as dst:
-                    dst.write(arr.astype(np.float32), 1)
-
-            print(f"Wrote {out_path}")
-
 
 def main():
     spline_root = Path(config.PREDICTION_SPLINE_ROOT)
@@ -547,16 +621,12 @@ def main():
             print(f"Building S1 VRT for {year}")
             build_temp_vrt(s1_paths, s1_vrt, reference_grid=ref_grid)
 
-            pred_out = Path(config.PREDICTION_OUTPUT)
-            if len(years) > 1:
-                pred_out = pred_out.with_name(f"{pred_out.stem}_{year}{pred_out.suffix}")
 
-            print(f"Predicting seamless raster for {year}")
-            predict_one_raster_pair(model, spline_vrt, s1_vrt, pred_out)
-
-            print(f"Chipping prediction back to FORCE tiles for {year}")
-            chip_prediction_to_force_tiles(
-                pred_path=pred_out,
+            print(f"Predicting FORCE tiles with chunked VRT context for {year}")
+            predict_force_tiles_from_vrt_chunked(
+                model=model,
+                s2_vrt=spline_vrt,
+                s1_vrt=s1_vrt,
                 spline_root=spline_root,
                 output_root=output_root,
                 year=year,

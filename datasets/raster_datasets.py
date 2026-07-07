@@ -28,7 +28,7 @@ class S2S1DSMTileFolderDataset(Dataset):
         s2_divisor=10000.0,
         s2_clamp01=True,
         s1_nodata=-32768.0,
-        s1_use_log1p=True,
+        s1_scale_factor=100.0,
         add_s1_ratio=True,
         check_shapes=True,
         transforms=None,
@@ -37,6 +37,7 @@ class S2S1DSMTileFolderDataset(Dataset):
         self.s2_dir = self.root / s2_subdir
         self.s1_dir = self.root / s1_subdir
         self.dsm_dir = self.root / dsm_subdir
+        self.s1_scale_factor = float(s1_scale_factor)
 
         if not self.s2_dir.exists():
             raise FileNotFoundError(f"Missing S2 directory: {self.s2_dir}")
@@ -48,7 +49,6 @@ class S2S1DSMTileFolderDataset(Dataset):
         self.s2_divisor = float(s2_divisor)
         self.s2_clamp01 = bool(s2_clamp01)
         self.s1_nodata = s1_nodata
-        self.s1_use_log1p = bool(s1_use_log1p)
         self.add_s1_ratio = bool(add_s1_ratio)
         self.check_shapes = bool(check_shapes)
         self.transforms = transforms
@@ -89,18 +89,22 @@ class S2S1DSMTileFolderDataset(Dataset):
         if s1.shape[0] != 2:
             raise ValueError(f"Expected 2 S1 bands [VH,VV], got shape {tuple(s1.shape)} for {s1_path}")
 
-        # nodata handling
+        # preserve nodata mask before scaling
         if self.s1_nodata is not None:
-            s1 = torch.where(s1 == float(self.s1_nodata), torch.zeros_like(s1), s1)
+            nodata_mask = (s1 == float(self.s1_nodata))
+        else:
+            nodata_mask = torch.zeros_like(s1, dtype=torch.bool)
 
-        # range compression for linear SAR inputs
-        if self.s1_use_log1p:
-            s1 = torch.log1p(torch.clamp(s1, min=0.0))
+        # convert stored integer values to dB-like float values
+        s1 = s1 / self.s1_scale_factor
+
+        # fill nodata with zero after scaling
+        s1 = torch.where(nodata_mask, torch.zeros_like(s1), s1)
 
         if self.add_s1_ratio:
             vh = s1[0:1]
             vv = s1[1:2]
-            ratio = vh - vv   # log(VH/VV) if in log space
+            ratio = vh - vv
             s1 = torch.cat([s1, ratio], dim=0)  # (3,H,W)
 
         # ---- DSM (10m) ----
