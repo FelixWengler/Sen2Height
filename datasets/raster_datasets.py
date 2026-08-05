@@ -1,138 +1,325 @@
 from pathlib import Path
+
+import numpy as np
 import torch
 from torch.utils.data import Dataset
-import rasterio
-import numpy as np
 
 
-class S2S1DSMTileFolderDataset(Dataset):
+class SplineS1DSMDataset(Dataset):
     """
-    Dataset that reads tiled Sentinel-2 spline coeffs + Sentinel-1 + DSM chips.
+    Read paired spline, Sentinel-1, and DSM NPZ chips.
 
     Expected structure:
-      root/
-        spline/
-          x0085_y0059_2018.tif   (C=220, H=256, W=256)
-        S1/
-          x0085_y0059_2018.tif   (C=2,   H=256, W=256)  [VH, VV] at 10m
-        bdom/
-          x0085_y0059_2018.tif   (C=1,   H=256, W=256)
+
+        root/
+            spline/
+                X0053_Y0049/
+                    chip_001_r0000_c0000_2023.npz
+            S1/
+                X0053_Y0049/
+                    chip_001_r0000_c0000_2023.npz
+            dsm/
+                X0053_Y0049/
+                    chip_001_r0000_c0000_2023.npz
+
+    Matching samples must have the same relative path beneath
+    the spline, S1, and dsm directories.
     """
 
     def __init__(
         self,
         root_dir,
-        s2_subdir="spline",
+        spline_subdir="spline",
         s1_subdir="S1",
-        dsm_subdir="bdom",
-        s2_divisor=10000.0,
-        s2_clamp01=True,
+        dsm_subdir="dsm",
+        spline_scale_factor=10000.0,
         s1_nodata=-32768.0,
         s1_scale_factor=100.0,
         add_s1_ratio=True,
-        check_shapes=True,
         transforms=None,
+        excluded_years=None,
     ):
         self.root = Path(root_dir)
-        self.s2_dir = self.root / s2_subdir
+
+        self.spline_dir = self.root / spline_subdir
         self.s1_dir = self.root / s1_subdir
         self.dsm_dir = self.root / dsm_subdir
-        self.s1_scale_factor = float(s1_scale_factor)
 
-        if not self.s2_dir.exists():
-            raise FileNotFoundError(f"Missing S2 directory: {self.s2_dir}")
-        if not self.s1_dir.exists():
-            raise FileNotFoundError(f"Missing S1 directory: {self.s1_dir}")
-        if not self.dsm_dir.exists():
-            raise FileNotFoundError(f"Missing DSM directory: {self.dsm_dir}")
+        for directory, name in (
+            (self.spline_dir, "spline"),
+            (self.s1_dir, "S1"),
+            (self.dsm_dir, "DSM"),
+        ):
+            if not directory.exists():
+                raise FileNotFoundError(
+                    f"Missing {name} directory: {directory}"
+                )
 
-        self.s2_divisor = float(s2_divisor)
-        self.s2_clamp01 = bool(s2_clamp01)
         self.s1_nodata = s1_nodata
+        self.s1_scale_factor = s1_scale_factor
+        self.spline_scale_factor = spline_scale_factor
         self.add_s1_ratio = bool(add_s1_ratio)
-        self.check_shapes = bool(check_shapes)
         self.transforms = transforms
 
-        self.files = sorted([
-            f for f in self.s2_dir.glob("*.tif")
-            if (self.s1_dir / f.name).exists() and (self.dsm_dir / f.name).exists()
-        ])
+        if excluded_years is None:
+            excluded_years = ()
 
-        if len(self.files) == 0:
-            raise RuntimeError(f"No paired S2/S1/BDOM tiles found in {root_dir}")
+        self.excluded_years = set(excluded_years)
+
+        self.files = []
+        excluded_count = 0
+        missing_pair_count = 0
+
+        for spline_path in sorted(
+            self.spline_dir.rglob("*.npz")
+        ):
+            relative_path = spline_path.relative_to(
+                self.spline_dir
+            )
+
+            try:
+                year = int(
+                    spline_path.stem.rsplit("_", 1)[-1]
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    f"Could not extract year from filename: "
+                    f"{spline_path.name}"
+                ) from exc
+
+            if year in self.excluded_years:
+                excluded_count += 1
+                continue
+
+            s1_path = self.s1_dir / relative_path
+            dsm_path = self.dsm_dir / relative_path
+
+            if not s1_path.exists() or not dsm_path.exists():
+                missing_pair_count += 1
+                continue
+
+            self.files.append(relative_path)
+
+        if not self.files:
+            raise RuntimeError(
+                "No paired spline/S1/DSM NPZ chips found under "
+                f"{self.root}"
+            )
+
+        print(
+            f"Found {len(self.files)} paired "
+            "spline/S1/DSM chips."
+        )
+
+        if self.excluded_years:
+            print(
+                f"Excluded {excluded_count} chips from years: "
+                f"{sorted(self.excluded_years)}"
+            )
+
+        if missing_pair_count > 0:
+            print(
+                f"Skipped {missing_pair_count} spline chips because "
+                "the matching S1 or DSM file was missing."
+            )
 
     def __len__(self):
         return len(self.files)
 
     @staticmethod
-    def _read(path: Path) -> np.ndarray:
-        with rasterio.open(path) as src:
-            arr = src.read()  # (C,H,W)
-        return arr.astype(np.float32)
+    def _load_npz_array(
+        path: Path,
+        key: str,
+        dtype=np.float32,
+    ) -> np.ndarray:
+        with np.load(path, allow_pickle=False) as archive:
+            if key not in archive:
+                raise KeyError(
+                    f"Key '{key}' not found in {path}. "
+                    f"Available keys: {archive.files}"
+                )
+
+            array = archive[key].astype(
+                dtype,
+                copy=False,
+            )
+
+        return array
 
     def __getitem__(self, idx):
-        s2_path = self.files[idx]
-        s1_path = self.s1_dir / s2_path.name
-        dsm_path = self.dsm_dir / s2_path.name
+        relative_path = self.files[idx]
 
-        # ---- S2 (10m) ----
-        s2 = torch.from_numpy(self._read(s2_path)).float()   # (C,256,256)
-        s2 = s2 / self.s2_divisor
-        if self.s2_clamp01:
-            s2 = torch.clamp(s2, 0.0, 1.0)
+        spline_path = self.spline_dir / relative_path
+        s1_path = self.s1_dir / relative_path
+        dsm_path = self.dsm_dir / relative_path
 
-        # ---- S1 (10m) ----
-        s1 = torch.from_numpy(self._read(s1_path)).float()   # expected (2,256,256)
-        if s1.ndim == 2:
-            s1 = s1.unsqueeze(0)
+        # -------------------------------------------------------------
+        # Spline coefficients
+        # -------------------------------------------------------------
 
-        if s1.shape[0] != 2:
-            raise ValueError(f"Expected 2 S1 bands [VH,VV], got shape {tuple(s1.shape)} for {s1_path}")
+        spline_array = self._load_npz_array(
+            path=spline_path,
+            key="data",
+        )
 
-        # preserve nodata mask before scaling
+        spline = torch.from_numpy(spline_array)
+
+        if spline.ndim != 3:
+            raise RuntimeError(
+                f"Expected spline shape (C, H, W), but found "
+                f"{tuple(spline.shape)} in {spline_path}"
+            )
+
+        spline_valid = torch.isfinite(spline)
+
+        spline = torch.where(
+            spline_valid,
+            spline,
+            torch.zeros_like(spline),
+        )
+
+        if self.spline_scale_factor is not None:
+            spline = spline / float(
+                self.spline_scale_factor
+            )
+
+        # -------------------------------------------------------------
+        # Sentinel-1
+        # -------------------------------------------------------------
+
+        s1_array = self._load_npz_array(
+            path=s1_path,
+            key="data",
+        )
+
+        s1 = torch.from_numpy(s1_array)
+
+        if s1.ndim != 3 or s1.shape[0] < 2:
+            raise RuntimeError(
+                f"Expected at least two S1 bands in {s1_path}, "
+                f"but found shape {tuple(s1.shape)}."
+            )
+
+        s1_valid = torch.isfinite(s1)
+
         if self.s1_nodata is not None:
-            nodata_mask = (s1 == float(self.s1_nodata))
-        else:
-            nodata_mask = torch.zeros_like(s1, dtype=torch.bool)
+            s1_valid &= (
+                s1 != float(self.s1_nodata)
+            )
 
-        # convert stored integer values to dB-like float values
-        s1 = s1 / self.s1_scale_factor
+        s1 = torch.where(
+            s1_valid,
+            s1,
+            torch.zeros_like(s1),
+        )
 
-        # fill nodata with zero after scaling
-        s1 = torch.where(nodata_mask, torch.zeros_like(s1), s1)
+        if self.s1_scale_factor is not None:
+            s1 = s1 / float(
+                self.s1_scale_factor
+            )
 
         if self.add_s1_ratio:
             vh = s1[0:1]
             vv = s1[1:2]
-            ratio = vh - vv
-            s1 = torch.cat([s1, ratio], dim=0)  # (3,H,W)
 
-        # ---- DSM (10m) ----
-        dsm = torch.from_numpy(self._read(dsm_path)).float()
-        if dsm.ndim == 2:
-            dsm = dsm.unsqueeze(0)
+            ratio_valid = (
+                s1_valid[0:1]
+                & s1_valid[1:2]
+            )
 
-        # ---- shape checks ----
-        if self.check_shapes:
-            if s2.shape[1:] != dsm.shape[1:]:
-                raise ValueError(
-                    f"S2 and DSM shape mismatch for {s2_path.name}: "
-                    f"s2={tuple(s2.shape)}, dsm={tuple(dsm.shape)}"
+            vh_minus_vv = vh - vv
+
+            vh_minus_vv = torch.where(
+                ratio_valid,
+                vh_minus_vv,
+                torch.zeros_like(vh_minus_vv),
+            )
+
+            s1 = torch.cat(
+                [
+                    s1,
+                    vh_minus_vv,
+                ],
+                dim=0,
+            )
+
+        # -------------------------------------------------------------
+        # DSM label and validity mask
+        # -------------------------------------------------------------
+
+        with np.load(
+            dsm_path,
+            allow_pickle=False,
+        ) as archive:
+            required_keys = {
+                "label",
+                "valid_mask",
+            }
+
+            missing_keys = (
+                required_keys - set(archive.files)
+            )
+
+            if missing_keys:
+                raise KeyError(
+                    f"Missing keys {sorted(missing_keys)} "
+                    f"in {dsm_path}. "
+                    f"Available keys: {archive.files}"
                 )
-            if s1.shape[1:] != s2.shape[1:]:
-                raise ValueError(
-                    f"S1 and S2 shape mismatch for {s2_path.name}: "
-                    f"s1={tuple(s1.shape)}, s2={tuple(s2.shape)}"
-                )
+
+            label_array = archive[
+                "label"
+            ].astype(
+                np.float32,
+                copy=False,
+            )
+
+            valid_mask_array = archive[
+                "valid_mask"
+            ].astype(
+                bool,
+                copy=False,
+            )
+
+        label = torch.from_numpy(label_array)
+        valid_mask = torch.from_numpy(
+            valid_mask_array
+        ).bool()
+
+        if label.ndim == 2:
+            label = label.unsqueeze(0)
+
+        if valid_mask.ndim == 2:
+            valid_mask = valid_mask.unsqueeze(0)
+
+        if label.shape != valid_mask.shape:
+            raise RuntimeError(
+                f"DSM label and mask shapes differ in {dsm_path}: "
+                f"{tuple(label.shape)} versus "
+                f"{tuple(valid_mask.shape)}"
+            )
+
+        valid_mask &= torch.isfinite(label)
+
+        # Clamp negative canopy heights to 0 m
+        label = torch.where(
+            valid_mask,
+            label.clamp_min(0.0),
+            torch.zeros_like(label),
+        )
 
         sample = {
-            "s2": s2,                  # (220,256,256)
-            "s1": s1,                  # (3,256,256)
-            "label": dsm,              # (1,256,256)
-            "name": s2_path.stem,
+            "s2": spline,
+            "spline": spline,
+            "s1": s1,
+            "label": label,
+            "label_valid_mask": valid_mask,
+            "filename": relative_path.name,
+            "relative_path": str(relative_path),
+            "tile_id": relative_path.parent.name,
         }
 
-        if self.transforms:
+        if self.transforms is not None:
             sample = self.transforms(sample)
 
         return sample

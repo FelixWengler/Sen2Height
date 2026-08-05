@@ -6,20 +6,40 @@ from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data import Sampler, Subset
 
 from model.height_net import Sentinel2ResUNet
-from datasets.raster_datasets import S2S1DSMTileFolderDataset
+from datasets.raster_datasets import SplineS1DSMDataset
+#from utils.metrics import rmse
 from utils.WeightedL1 import BinWeightedL1
 import config
 
 
+class RandomSubsetSampler(Sampler):
+    def __init__(self, data_source, num_samples):
+        self.data_source = data_source
+        self.num_samples = min(
+            int(num_samples),
+            len(data_source),
+        )
+
+    def __iter__(self):
+        indices = torch.randperm(
+            len(self.data_source)
+        )[:self.num_samples]
+
+        return iter(indices.tolist())
+
+    def __len__(self):
+        return self.num_samples
+
+
 def sse_and_count(pred: torch.Tensor, target: torch.Tensor):
+    # pred/target: [B,1,H,W]
     diff = pred - target
     sse = torch.sum(diff * diff).item()
     n = diff.numel()
     return sse, n
-
 
 # -------------------------
 # Logging setup
@@ -32,111 +52,190 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(message)s"
 )
-logging.info("Starting Sen2Height tiled training run (10m S1 version)")
-
-tb_log_dir = getattr(config, "TB_LOG_DIR", "runs/spline_S110m")
-writer = SummaryWriter(log_dir=tb_log_dir)
-logging.info(f"TensorBoard logs: {tb_log_dir}")
+logging.info("Starting Sen2Height tiled training run")
 
 
 # -------------------------
 # Device + threads
 # -------------------------
 torch.set_num_threads(getattr(config, "NUM_THREADS", 30))
-
-requested_device = getattr(config, "DEVICE", "cuda")
-if requested_device == "cuda" and not torch.cuda.is_available():
-    device = torch.device("cpu")
-    logging.warning("CUDA requested but not available, falling back to CPU.")
-else:
-    device = torch.device(requested_device)
-
+device = torch.device(getattr(config, "DEVICE", "cuda"))  # "cuda" if available
 logging.info(f"Using device: {device}")
 
 
 # -------------------------
 # Datasets
 # -------------------------
-train_ds = S2S1DSMTileFolderDataset(config.TRAIN_ROOT)
-val_ds   = S2S1DSMTileFolderDataset(config.VAL_ROOT)
 
-logging.info(f"Train tiles: {len(train_ds)} | Val tiles: {len(val_ds)}")
+dataset_arguments = {
+    "s1_nodata": getattr(
+        config,
+        "S1_NODATA",
+        -32768.0,
+    ),
+    "s1_scale_factor": getattr(
+        config,
+        "S1_SCALE_FACTOR",
+        100.0,
+    ),
+    "add_s1_ratio": getattr(
+        config,
+        "ADD_S1_RATIO",
+        True,
+    ),
+    "excluded_years": getattr(
+        config,
+        "EXCLUDED_YEARS",
+        (),
+    ),
+}
 
+train_ds = SplineS1DSMDataset(
+    root_dir=config.TRAIN_ROOT,
+    **dataset_arguments,
+)
 
+val_ds = SplineS1DSMDataset(
+    root_dir=config.VAL_ROOT,
+    **dataset_arguments,
+)
+
+logging.info(
+    f"Train chips: {len(train_ds)} | "
+    f"Validation chips: {len(val_ds)}"
+)
+
+sample = train_ds[0]
+
+logging.info(
+    "First sample shapes: "
+    f"spline={tuple(sample['s2'].shape)}, "
+    f"S1={tuple(sample['s1'].shape)}, "
+    f"label={tuple(sample['label'].shape)}"
+)
+
+if sample["s2"].shape[0] != config.NUM_BANDS:
+    raise RuntimeError(
+        f"NUM_BANDS={config.NUM_BANDS}, but spline "
+        f"contains {sample['s2'].shape[0]} channels."
+    )
+
+if sample["s1"].shape[0] != config.S1_BANDS:
+    raise RuntimeError(
+        f"S1_BANDS={config.S1_BANDS}, but S1 input "
+        f"contains {sample['s1'].shape[0]} channels."
+    )
+
+logging.info(
+    "First sample ranges: "
+    f"spline=["
+    f"{sample['s2'].min().item():.4f}, "
+    f"{sample['s2'].max().item():.4f}], "
+    f"S1=["
+    f"{sample['s1'].min().item():.4f}, "
+    f"{sample['s1'].max().item():.4f}], "
+    f"label=["
+    f"{sample['label'].min().item():.4f}, "
+    f"{sample['label'].max().item():.4f}], "
+    f"valid_fraction="
+    f"{sample['label_valid_mask'].float().mean().item():.4f}"
+)
 # -------------------------
 # DataLoaders
 # -------------------------
-num_workers = getattr(config, "NUM_WORKERS", 4)
+
+train_sampler = RandomSubsetSampler(
+    train_ds,
+    num_samples=config.TRAIN_CHIPS_PER_EPOCH,
+)
+
+
+validation_chips = min(
+    getattr(
+        config,
+        "VALIDATION_CHIPS",
+        len(val_ds),
+    ),
+    len(val_ds),
+)
+
+validation_seed = getattr(
+    config,
+    "VALIDATION_SEED",
+    42,
+)
+
+generator = torch.Generator().manual_seed(
+    validation_seed
+)
+
+validation_indices = torch.randperm(
+    len(val_ds),
+    generator=generator,
+)[:validation_chips].tolist()
+
+val_subset = Subset(
+    val_ds,
+    validation_indices,
+)
+
+num_workers = getattr(
+    config,
+    "NUM_WORKERS",
+    4,
+)
+
+persistent_workers = num_workers > 0
 
 train_loader = DataLoader(
     train_ds,
     batch_size=config.BATCH_SIZE,
-    shuffle=True,
-    num_workers=num_workers,
-    pin_memory=(device.type == "cuda"),
+    sampler=train_sampler,
+    shuffle=False,
+    num_workers=config.NUM_WORKERS,
     drop_last=True,
-    persistent_workers=(num_workers > 0),
 )
 
 val_loader = DataLoader(
-    val_ds,
+    val_subset,
     batch_size=config.BATCH_SIZE,
     shuffle=False,
-    num_workers=num_workers,
-    pin_memory=(device.type == "cuda"),
+    num_workers=config.NUM_WORKERS,
+    pin_memory=device.type == "cuda",
+    persistent_workers=persistent_workers,
     drop_last=False,
-    persistent_workers=(num_workers > 0),
 )
 
 
 # -------------------------
 # Model / loss / optimizer
 # -------------------------
-model = Sentinel2ResUNet(
-    in_channels=config.NUM_BANDS,
-    s1_in_channels=config.S1_BANDS,
-).to(device)
-
+model = Sentinel2ResUNet(in_channels=config.NUM_BANDS, s1_in_channels=config.S1_BANDS).to(device)
 criterion = BinWeightedL1().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
-
-use_amp = (device.type == "cuda")
+use_amp = (device.type=="cuda")
 scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
-
-accum_steps = getattr(config, "ACCUM_STEPS", 4)
+accum_steps = max(
+    1,
+    int(getattr(config, "ACCUM_STEPS", 1)),
+)
 
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer,
-    mode="min",
-    factor=0.5,
-    patience=5,
-    threshold=1e-4,
-    min_lr=1e-6,
+    mode = "min",
+    factor = 0.5,
+    patience = 5,
+    threshold = 1e-4,
+    min_lr = 1e-6, 
 )
 
 best_val_rmse = float("inf")
-
 model_out = getattr(config, "MODEL_OUT", "model/output/model_best.pth")
 Path(model_out).parent.mkdir(parents=True, exist_ok=True)
-
-
-# -------------------------
-# One-time sanity check
-# -------------------------
-first_batch = next(iter(train_loader))
-logging.info(
-    f"Sanity check batch shapes | "
-    f"s2: {tuple(first_batch['s2'].shape)} | "
-    f"s1: {tuple(first_batch['s1'].shape)} | "
-    f"label: {tuple(first_batch['label'].shape)}"
-)
-
 
 # -------------------------
 # Training Loop
 # -------------------------
-global_step = 0
-
 for epoch in range(config.EPOCHS):
     model.train()
     train_loss_sum = 0.0
@@ -149,7 +248,12 @@ for epoch in range(config.EPOCHS):
     for step, batch in enumerate(train_loader):
         s2 = batch["s2"].to(device, non_blocking=True)
         s1 = batch["s1"].to(device, non_blocking=True)
-        y = batch["label"].to(device, non_blocking=True)
+        y  = batch["label"].to(device, non_blocking=True)
+
+        valid_mask = batch["label_valid_mask"].to(
+            device,
+            non_blocking=True,
+        )
 
         with torch.cuda.amp.autocast(enabled=use_amp):
             pred = model(s2, s1)
@@ -160,20 +264,25 @@ for epoch in range(config.EPOCHS):
 
         train_loss_sum += raw_loss.item()
         diff = pred.detach().float() - y.float()
-        train_sse += torch.sum(diff * diff).item()
-        train_n += diff.numel()
+        valid_diff = diff[valid_mask]
+        train_sse += torch.sum(valid_diff * valid_diff).item()
+        train_n += valid_diff.numel()
         train_batches += 1
 
-        do_step = ((step + 1) % accum_steps == 0) or ((step + 1) == len(train_loader))
-        if do_step:
+        if (step + 1) % accum_steps == 0:
             scaler.unscale_(optimizer)
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad(set_to_none=True)
 
-            global_step += 1
-            writer.add_scalar("GradNorm/train", float(grad_norm), global_step)
+    # flush leftover gradients
+    if (step + 1) % accum_steps != 0:
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad(set_to_none=True)
 
     avg_train_loss = train_loss_sum / max(train_batches, 1)
     avg_train_rmse = (train_sse / max(train_n, 1)) ** 0.5
@@ -191,31 +300,41 @@ for epoch in range(config.EPOCHS):
         for batch in val_loader:
             s2 = batch["s2"].to(device, non_blocking=True)
             s1 = batch["s1"].to(device, non_blocking=True)
-            y = batch["label"].to(device, non_blocking=True)
+            y = batch["label"].to(
+                device,
+                non_blocking=True,
+            )
 
-            with torch.cuda.amp.autocast(enabled=use_amp):
+            valid_mask = batch[
+                "label_valid_mask"
+            ].to(
+                device,
+                non_blocking=True,
+            )
+
+            with torch.cuda.amp.autocast(
+                enabled=use_amp
+            ):
                 pred = model(s2, s1)
                 vloss = criterion(pred, y)
 
             val_loss_sum += vloss.item()
             val_batches += 1
 
-            batch_sse, batch_n = sse_and_count(pred.float(), y.float())
-            val_sse += batch_sse
-            val_n += batch_n
+            diff = pred.float() - y.float()
+            valid_diff = diff[valid_mask]
+
+            val_sse += torch.sum(
+                valid_diff * valid_diff
+            ).item()
+
+            val_n += valid_diff.numel()
 
     avg_val_loss = val_loss_sum / max(val_batches, 1)
     avg_val_rmse = (val_sse / max(val_n, 1)) ** 0.5
 
     scheduler.step(avg_val_rmse)
     current_lr = optimizer.param_groups[0]["lr"]
-
-    # TensorBoard scalars
-    writer.add_scalar("Loss/train", avg_train_loss, epoch + 1)
-    writer.add_scalar("RMSE/train", avg_train_rmse, epoch + 1)
-    writer.add_scalar("Loss/val", avg_val_loss, epoch + 1)
-    writer.add_scalar("RMSE/val", avg_val_rmse, epoch + 1)
-    writer.add_scalar("LR", current_lr, epoch + 1)
 
     logging.info(
         f"Epoch {epoch + 1}/{config.EPOCHS} - "
@@ -226,17 +345,5 @@ for epoch in range(config.EPOCHS):
 
     if avg_val_rmse < best_val_rmse:
         best_val_rmse = avg_val_rmse
-
-        checkpoint = {
-            "epoch": epoch + 1,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "scheduler_state_dict": scheduler.state_dict(),
-            "scaler_state_dict": scaler.state_dict(),
-            "best_val_rmse": best_val_rmse,
-        }
-
-        torch.save(checkpoint, model_out)
+        torch.save(model.state_dict(), model_out)
         logging.info(f"Saved new best model to {model_out}")
-
-writer.close()

@@ -322,11 +322,20 @@ def derive_reference_grid(raster_paths):
     }
 
     
-def normalize_s2(tile_np: np.ndarray) -> torch.Tensor:
+def normalize_s2(
+    tile_np: np.ndarray,
+) -> torch.Tensor:
     t = torch.from_numpy(tile_np).float()
-    t = torch.clamp(t / 10000.0, 0.0, 1.0)
-    return t
 
+    finite = torch.isfinite(t)
+
+    t = torch.where(
+        finite,
+        t,
+        torch.zeros_like(t),
+    )
+
+    return t / 10000.0
 
 def preprocess_s1_like_training(s1_patch_raw: torch.Tensor, s1_nodata, s1_scale_factor=100.0):
     if s1_nodata is not None:
@@ -565,16 +574,36 @@ def collect_year_tile_pairs(spline_root: Path, s1_root: Path, year: int, tile_al
             print(f"Skipping {tile_name} {year}: missing spline file")
             continue
 
-        s1_tile_dir = s1_root / str(year) / tile_name
+        s1_tile_dir = s1_root / tile_name
+
         if not s1_tile_dir.exists():
-            print(f"Skipping {tile_name} {year}: missing S1 folder")
+            print(
+                f"Skipping {tile_name} {year}: "
+                f"missing S1 tile folder {s1_tile_dir}"
+            )
             continue
 
-        try:
-            s1_path = find_single_tif(s1_tile_dir)
-        except Exception as e:
-            print(f"Skipping {tile_name} {year}: {e}")
+        s1_matches = sorted(
+            s1_tile_dir.glob(
+                f"{year}-{year}_*_HL_UDF_VVVHP_PYP.tif"
+            )
+        )
+
+        if len(s1_matches) == 0:
+            print(
+                f"Skipping {tile_name} {year}: "
+                "no matching S1 raster"
+            )
             continue
+
+        if len(s1_matches) > 1:
+            print(
+                f"Skipping {tile_name} {year}: "
+                f"multiple matching S1 rasters: {s1_matches}"
+            )
+            continue
+
+        s1_path = s1_matches[0]
 
         spline_paths.append(s2_path)
         s1_paths.append(s1_path)
